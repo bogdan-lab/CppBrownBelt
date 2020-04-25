@@ -46,13 +46,18 @@ struct LastCommentInfo {
 };
 
 class CommentServer {
+public:
+    HttpResponse ServeRequest(const HttpRequest& req);
 private:
+    HttpResponse ServeAddUser(const HttpRequest& request);
+    HttpResponse ServeAddComment(const HttpRequest& request);
+    HttpResponse ServeCheckCaptcha(const HttpRequest& request);
+    HttpResponse ServeUserComments(const HttpRequest& request);
+    HttpResponse ServeCaptcha(const HttpRequest&) ;
+
     vector<vector<string>> comments_;
     std::optional<LastCommentInfo> last_comment;
     unordered_set<size_t> banned_users;
-public:
-    //void ServeRequest(const HttpRequest& req, ostream& os);
-    HttpResponse ServeRequest(const HttpRequest& req);
 };
 
 struct ParsedResponse {
@@ -71,6 +76,23 @@ bool operator==(const HttpHeader& lhs, const HttpHeader& rhs);
 
 //-------------------------------------------------------------------------------------------------------------
 
+
+ostream& operator<<(ostream& output, HttpCode code) {
+  switch (code) {
+    case HttpCode::Ok:
+      output << "200 OK";
+      break;
+    case HttpCode::Found:
+      output << "302 Found";
+      break;
+    case HttpCode::NotFound:
+      output << "404 Not found";
+      break;
+    default:
+      throw invalid_argument("Unknown http code");
+  }
+  return output;
+}
 
 HttpResponse& HttpResponse::AddHeader(string name, string value){
     HttpHeader tmp;
@@ -93,18 +115,16 @@ HttpResponse& HttpResponse::SetCode(HttpCode a_code){
 HttpResponse::HttpResponse(HttpCode code): cd(code), hdrs(), cnt() {}
 
 
-ostream& operator << (ostream& output, const HttpResponse& resp){
-    output << "HTTP/1.1 ";
-    if (resp.cd==HttpCode::Ok){ output << "200 OK\n";}
-    else if (resp.cd == HttpCode::Found){output << "302 Found\n";}
-    else { output << "404 Not found\n";}
-    for (const auto& el : resp.hdrs){
-        output << el << "\n";
-    }
-    output << resp.cnt;
-    return output;
+ostream& operator << (ostream& output, const HttpResponse& resp) {
+  output << "HTTP/1.1 " << resp.cd << '\n';
+  for (const auto& [name, value] : resp.hdrs) {
+    output << name << ": " << value << '\n';
+  }
+  if (!resp.cnt.empty()) {
+    output << "Content-Length: " << resp.cnt.size() << '\n';
+  }
+  return output << '\n' << resp.cnt;
 }
-
 
 pair<string, string> SplitBy(const string& what, const string& by) {
   size_t pos = what.find(by);
@@ -127,125 +147,74 @@ pair<size_t, string> ParseIdAndContent(const string& body) {
   auto [id_string, content] = SplitBy(body, " ");
   return {FromString<size_t>(id_string), content};
 }
-/*
-void CommentServer::ServeRequest(const HttpRequest& req, ostream& os) {
+
+HttpResponse CommentServer::ServeRequest(const HttpRequest& req) {
     if (req.method == "POST") {
         if (req.path == "/add_user") {
-            comments_.emplace_back();
-            auto response = to_string(comments_.size() - 1);
-            os << "HTTP/1.1 200 OK\n" << "Content-Length: " << response.size() << "\n" << "\n"
-               << response;
-        }
-        else if (req.path == "/add_comment") {
-            auto [user_id, comment] = ParseIdAndContent(req.body);
-
-                    if (!last_comment || last_comment->user_id != user_id) {
-                last_comment = LastCommentInfo {user_id, 1};
-            } else if (++last_comment->consecutive_count > 3) {
-                banned_users.insert(user_id);
-            }
-
-            if (banned_users.count(user_id) == 0) {
-                comments_[user_id].push_back(string(comment));
-                os << "HTTP/1.1 200 OK\n\n";
-            }
-            else {
-                os << "HTTP/1.1 302 Found\n\n"
-                      "Location: /captcha\n"
-                      "\n";
-            }
-        }
-
-        else if (req.path == "/checkcaptcha") {
-            if (auto [id, response] = ParseIdAndContent(req.body); response == "42") {
-                banned_users.erase(id);
-                if (last_comment && last_comment->user_id == id) {
-                    last_comment.reset();
-                }
-                os << "HTTP/1.1 200 OK\n\n";
-            }
-        } else {
-            os << "HTTP/1.1 404 Not found\n\n";
+            return ServeAddUser(req);
+        } else if (req.path == "/add_comment") {
+            return ServeAddComment(req);
+        } else if (req.path == "/checkcaptcha") {
+            return ServeCheckCaptcha(req);
         }
     } else if (req.method == "GET") {
         if (req.path == "/user_comments") {
-            auto user_id = FromString<size_t>(req.get_params.at("user_id"));
-            string response;
-            for (const string& c : comments_[user_id]) {
-                response += c + '\n';
-            }
-
-            os << "HTTP/1.1 200 OK\n" << "Content-Length: " << response.size() << response;
+            return ServeUserComments(req);
         } else if (req.path == "/captcha") {
-            os << "HTTP/1.1 200 OK\n" << "Content-Length: 80\n" << "\n"
-               << "What's the answer for The Ultimate Question of Life, the Universe, and Everything?";
-        } else {
-            os << "HTTP/1.1 404 Not found\n\n";
+            return ServeCaptcha(req);
         }
     }
-}
-*/
-
-
-string GetBodyResponse(string response){
-    stringstream ss;
-    ss << "Content-Length: " << response.size() << "\n" << "\n" << response;
-    return ss.str();
+    return HttpResponse(HttpCode::NotFound);
 }
 
 
-HttpResponse CommentServer::ServeRequest(const HttpRequest& req){
-    HttpResponse rsp(HttpCode::NotFound);
-    if (req.method == "POST"){
-        if (req.path == "/add_user") {
-            comments_.emplace_back();
-            auto response = to_string(comments_.size() - 1);
-            rsp.SetCode(HttpCode::Ok).SetContent(GetBodyResponse(response));
-        }
-        else if (req.path == "/add_comment") {
-            auto [user_id, comment] = ParseIdAndContent(req.body);
-            if (!last_comment || last_comment->user_id != user_id) {
-                last_comment = LastCommentInfo {user_id, 1};
-            } else if (++last_comment->consecutive_count > 3) {
-                banned_users.insert(user_id);
-            }
-            if (banned_users.count(user_id) == 0) {
-                comments_[user_id].push_back(string(comment));
-                rsp.SetCode(HttpCode::Ok);
-            }
-            else {
-                rsp.SetCode(HttpCode::Found).AddHeader("Location", "/captcha");
-            }
-        }
-        else if (req.path == "/checkcaptcha") {
-            if (auto [id, response] = ParseIdAndContent(req.body); response == "42") {
-                banned_users.erase(id);
-                if (last_comment && last_comment->user_id == id) {
-                    last_comment.reset();
-                }
-                rsp.SetCode(HttpCode::Ok);
-            }
-        }
-    }
-    else if (req.method == "GET") {
-        if (req.path == "/user_comments") {
-            auto user_id = FromString<size_t>(req.get_params.at("user_id"));
-            string response;
-            for (const string& c : comments_[user_id]) {
-                response += c + '\n';
-            }
-            rsp.SetCode(HttpCode::Ok).SetContent(GetBodyResponse(response));
-        } else if (req.path == "/captcha") {
-            string cptch = "\n\nWhat's the answer for The Ultimate Question of Life, the Universe, and Everything?";
-            rsp.SetCode(HttpCode::Ok).SetContent(cptch);
-        }
-    }
-
-    return rsp;
+HttpResponse CommentServer::ServeAddUser(const HttpRequest& request) {
+    comments_.emplace_back();
+    return HttpResponse(HttpCode::Ok).SetContent(to_string(comments_.size() - 1));
 }
 
+HttpResponse CommentServer::ServeAddComment(const HttpRequest& request) {
+    auto [user_id, comment] = ParseIdAndContent(request.body);
+    if (!last_comment || last_comment->user_id != user_id) {
+        last_comment = LastCommentInfo {user_id, 1};
+    } else if (++last_comment->consecutive_count > 3) {
+        banned_users.insert(user_id);
+    }
+    if (banned_users.count(user_id) == 0) {
+        comments_[user_id].push_back(comment);
+        return HttpResponse(HttpCode::Ok);
+    } else {
+        return HttpResponse(HttpCode::Found).AddHeader("Location", "/captcha");
+    }
+}
 
+HttpResponse CommentServer::ServeCheckCaptcha(const HttpRequest& request) {
+    if (auto [id, response] = ParseIdAndContent(request.body); response == "42") {
+        banned_users.erase(id);
+        if (last_comment && last_comment->user_id == id) {
+            last_comment.reset();
+        }
+        return HttpResponse(HttpCode::Ok);
+    } else {
+        return HttpResponse(HttpCode::Found).AddHeader("Location", "/captcha");
+    }
+}
 
+HttpResponse CommentServer::ServeUserComments(const HttpRequest& request) {
+    auto user_id = FromString<size_t>(request.get_params.at("user_id"));
+    string response;
+    for (const string& c : comments_[user_id]) {
+        response += c + '\n';
+    }
+
+    return HttpResponse(HttpCode::Ok).SetContent(std::move(response));
+}
+
+HttpResponse CommentServer::ServeCaptcha(const HttpRequest&) {
+    return HttpResponse(HttpCode::Ok).SetContent(
+                "What's the answer for The Ultimate Question of Life, the Universe, and Everything?"
+                );
+}
 
 
 ostream& operator<<(ostream& output, const HttpHeader& h) {
@@ -283,16 +252,10 @@ istream& operator >>(istream& input, ParsedResponse& r) {
 
 
 
-
-
-
-
 void Test(CommentServer& srv, const HttpRequest& request, const ParsedResponse& expected) {
   stringstream ss;
 //  srv.ServeRequest(request, ss);
-  HttpResponse tmp = srv.ServeRequest(request);
-  ss<<tmp;
-  cout << tmp << endl;
+  ss<<srv.ServeRequest(request);
   ParsedResponse resp;
   ss >> resp;
   ASSERT_EQUAL(resp.code, expected.code);
@@ -327,11 +290,11 @@ void TestServer() {
     {"GET", "/user_comments", "", {{"user_id", "1"}}},
     {200, {}, "Hi\nBuy my goods\nEnlarge\n"}
   );
-//  Test(
-//    cs,
-//    {"GET", "/captcha"},
-//    {200, {}, {"What's the answer for The Ultimate Question of Life, the Universe, and Everything?"}}
-//  );
+  Test(
+    cs,
+    {"GET", "/captcha"},
+    {200, {}, {"What's the answer for The Ultimate Question of Life, the Universe, and Everything?"}}
+  );
   Test(cs, {"POST", "/checkcaptcha", "1 24"}, redirect_to_captcha);
   Test(cs, {"POST", "/checkcaptcha", "1 42"}, ok);
   Test(cs, {"POST", "/add_comment", "1 Sorry! No spam any more"}, ok);
