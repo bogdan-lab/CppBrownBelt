@@ -14,48 +14,57 @@ using namespace std;
 template <typename K, typename V, typename Hash = std::hash<K>>
 class ConcurrentMap {
 public:
-  using MapType = unordered_map<K, V, Hash>;
-  using KeyMap = unordered_map<K, size_t, Hash>;
+    using MapType = unordered_map<K, V, Hash>;
 
-  struct WriteAccess {
-    V& ref_to_value;
-    lock_guard<mutex> g;
-    WriteAccess(V& value, mutex& m): g(m), ref_to_value(value){}
+    struct Bucket {
+        MapType data;
+        mutable mutex m;
+    };
+
+private:
+  size_t GetBucket(const K& key) const {
+      return hasher(key) % buckets.size();
+  }
+
+  Hash hasher;
+  vector<Bucket> buckets;
+
+public:
+
+  struct WriteAccess : lock_guard<mutex>{
+      V& ref_to_value;
+      WriteAccess(Bucket& bucket, const K& key):lock_guard(bucket.m), ref_to_value(bucket.data[key]){}
   };
 
-  struct ReadAccess {
-    const V& ref_to_value;
-    lock_guard<mutex> g;
-    ReadAccess(const V& val, mutex& m):g(m), ref_to_value(val){}
-  };
-
-  struct Bucket {
-      MapType data;
-      mutex m;
+  struct ReadAccess : lock_guard<mutex>{
+      const V& ref_to_value;
+      ReadAccess(const Bucket& bucket, const K& key):lock_guard(bucket.m), ref_to_value(bucket.data.at(key)){}
   };
 
   explicit ConcurrentMap(size_t bucket_count): buckets(bucket_count){
   }
 
   WriteAccess operator[](const K& key){
-      size_t b = hasher(key) % buckets.size();
-      return WriteAccess(buckets[b].data[key], buckets[b].m);
+      size_t b = GetBucket(key);
+      return WriteAccess(buckets[b], key);
   }
 
 
   ReadAccess At(const K& key) const{
-      size_t b = hasher(key) % buckets.size();
-      return ReadAccess(buckets[b].data.at(key), buckets[b].m);
+      size_t b = GetBucket(key);
+      return ReadAccess(buckets[b], key);
   }
 
   bool Has(const K& key) const{
-      size_t b = hasher(key) % buckets.size();
+      size_t b = GetBucket(key);
+      lock_guard<mutex> g(buckets[b].m);
       return buckets[b].data.count(key)>0;
   }
 
   MapType BuildOrdinaryMap() const{
       MapType res;
       for(const Bucket& b : buckets){
+          lock_guard<mutex> g(b.m);
           for(const auto& mp : b.data){
               res[mp.first] = mp.second;
           }
@@ -63,18 +72,9 @@ public:
       return res;
   }
 
-private:
-  Hash hasher;
-  mutable vector<Bucket> buckets;
 };
 
-template <typename K, typename V>
-ostream& operator<<(ostream& out, const unordered_map<K, V>& cmap ){
-    for (const auto& el: cmap){
-        out << el.first << " : " << el.second << '\n';
-    }
-    return out;
-}
+
 
 
 void RunConcurrentUpdates(
@@ -262,10 +262,10 @@ void TestHas() {
 int main() {
   TestRunner tr;
   RUN_TEST(tr, TestConcurrentUpdate);
-//  RUN_TEST(tr, TestReadAndWrite);
-//  RUN_TEST(tr, TestSpeedup);
-//  RUN_TEST(tr, TestConstAccess);
-//  RUN_TEST(tr, TestStringKeys);
-//  RUN_TEST(tr, TestUserType);
-//  RUN_TEST(tr, TestHas);
+  RUN_TEST(tr, TestReadAndWrite);
+  RUN_TEST(tr, TestSpeedup);
+  RUN_TEST(tr, TestConstAccess);
+  RUN_TEST(tr, TestStringKeys);
+  RUN_TEST(tr, TestUserType);
+  RUN_TEST(tr, TestHas);
 }
