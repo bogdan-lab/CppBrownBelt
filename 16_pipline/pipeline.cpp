@@ -17,188 +17,115 @@ struct Email {
 };
 
 
-ostream& operator<<(ostream& out, const Email& m){
-    out << m.from << "\n"
-        << m.to << "\n"
-        << m.body << "\n";
-}
-
-
-
 class Worker {
 public:
     virtual ~Worker() = default;
-    Worker() = default;
-//    {
-//        vector<Node*> to_clear;
-//        Node* it_link = cur_element;
-//        to_clear.push_back(it_link);
-//        while(it_link->next){
-//            to_clear.push_back(it_link->next);
-//            it_link = it_link->next;
-//        }
-//        for(auto el : to_clear){
-//            delete el;
-//        }
-//    }
-
-  virtual void Process(unique_ptr<Email> email) = 0;
-  virtual void Run() {
-    // только первому worker-у в пайплайне нужно это имплементировать
-    throw logic_error("Unimplemented");
-  }
+    virtual void Process(unique_ptr<Email> email) = 0;
+    virtual void Run() {
+        // òîëüêî ïåðâîìó worker-ó â ïàéïëàéíå íóæíî ýòî èìïëåìåíòèðîâàòü
+        throw logic_error("Unimplemented");
+    }
 
 protected:
-    // реализации должны вызывать PassOn, чтобы передать объект дальше
-    // по цепочке обработчиков
-    void PassOn(unique_ptr<Email> email) const{
-        if(next_){
+    // ðåàëèçàöèè äîëæíû âûçûâàòü PassOn, ÷òîáû ïåðåäàòü îáúåêò äàëüøå
+    // ïî öåïî÷êå îáðàáîò÷èêîâ
+    void PassOn(unique_ptr<Email> email) const {
+        if (next_) {
             next_->Process(move(email));
         }
     }
 
 public:
-
-    void SetNext(unique_ptr<Worker> next){
+    void SetNext(unique_ptr<Worker> next) {
         next_ = move(next);
-//        if(this->next_){
-//            this->next_->SetNext(move(next));
-//        } else {
-//            this->next_ = move(next);
-//        }
     }
-      //      Node* it_link = cur_element->next;
-//      while(it_link!=nullptr){
-//          it_link = it_link->next;
-//      }
-//      Node* el = new Node;
-//      el->worker = move(next);
-//      el->next = nullptr;
-//      it_link->next = el;
-
-
 
 private:
-//  struct Node{
-//      unique_ptr<Worker> worker;
-//      Node* next;
-//  };
-  unique_ptr<Worker> next_;
+    unique_ptr<Worker> next_;
 };
 
-
-class Reader : public Worker {
+class Reader: public Worker {
 public:
-    explicit Reader(istream& input):input_(input){}
+    explicit Reader(istream& in) :
+            in_(in) {
+    }
 
-    void Run(){
-        string buf;
-        while(getline(input_, buf, '\n')){
-            if(!buf.empty()){
-                Email tmp;
-                tmp.from = move(buf);
-                getline(input_, tmp.to, '\n');
-                getline(input_, tmp.body, '\n');
-                if(!tmp.to.empty() && !tmp.from.empty() && !tmp.body.empty()){
-                    unique_ptr<Email> further = make_unique<Email>(tmp);
-                    PassOn(move(further));
-                }
+    void Process(unique_ptr<Email> /* email */) override {
+        // íå äåëàåì íè÷åãî
+    }
+
+    void Run() override {
+        for (;;) {
+            auto email = make_unique<Email>();
+            getline(in_, email->from);
+            getline(in_, email->to);
+            getline(in_, email->body);
+            if (in_) {
+                PassOn(move(email));
+            } else {
+                // â ðåàëüíûõ ïðîãðàììàõ çäåñü ñòîèò ðàçäåëüíî ïðîâåðÿòü badbit è eof
+                break;
             }
         }
     }
 
-    void Process(unique_ptr<Email> email) {}
-
 private:
-    istream& input_;
+    istream& in_;
 };
 
-
-class Filter : public Worker {
+class Filter: public Worker {
 public:
-  using Function = function<bool(const Email&)>;
+    using Function = function<bool(const Email&)>;
 
 public:
-    explicit Filter(Function f): func_(f) {}
+    explicit Filter(Function func) :
+            func_(move(func)) {
+    }
 
-    void Process(unique_ptr<Email> email) {
-        if(func_(*email)){
+    void Process(unique_ptr<Email> email) override {
+        if (func_(*email)) {
             PassOn(move(email));
         }
     }
+
 private:
     Function func_;
 };
 
-
-class Copier : public Worker {
+class Copier: public Worker {
 public:
-  explicit Copier(const string& rec): reciever(rec) {}
+    explicit Copier(string to) :
+            to_(move(to)) {
+    }
 
-    void Process(unique_ptr<Email> email) {
-        if(reciever!=email->to){
-            unique_ptr<Email> copy_mail = make_unique<Email>(*email);
-            copy_mail->to = reciever;
+    void Process(unique_ptr<Email> email) override {
+        if (email->to != to_) {
+            auto copy = make_unique<Email>(*email);
+            copy->to = to_;
             PassOn(move(email));
-            PassOn(move(copy_mail));
+            PassOn(move(copy));
         } else {
             PassOn(move(email));
         }
     }
 
-    private:
-        string reciever;
+private:
+    string to_;
 };
 
-
-class Sender : public Worker {
+class Sender: public Worker {
 public:
-    explicit Sender(ostream& out): output(out) {}
+    explicit Sender(ostream& out) :
+            out_(out) {
+    }
 
-    void Process(unique_ptr<Email> email) {
-        output << *email;
-        PassOn(move(email));
+    void Process(unique_ptr<Email> email) override {
+        out_ << email->from << endl << email->to << endl << email->body << endl;
+        PassOn(move(email));  // never forget
     }
 private:
-    ostream& output;
+    ostream& out_;
 };
-
-/*
-// реализуйте класс
-class PipelineBuilder {
-public:
-  // добавляет в качестве первого обработчика Reader
-    explicit PipelineBuilder(istream& in):pipe(){
-        pipe->SetNext(make_unique<Reader>(in));
-    }
-
-  // добавляет новый обработчик Filter
-    PipelineBuilder& FilterBy(Filter::Function filter){
-        pipe->SetNext(make_unique<Filter>(filter));
-        return *this;
-    }
-
-  // добавляет новый обработчик Copier
-    PipelineBuilder& CopyTo(string recipient){
-        pipe->SetNext(make_unique<Copier>(recipient));
-        return *this;
-    }
-
-  // добавляет новый обработчик Sender
-    PipelineBuilder& Send(ostream& out){
-        pipe->SetNext(make_unique<Sender>(out));
-        return *this;
-    }
-
-  // возвращает готовую цепочку обработчиков
-    unique_ptr<Worker> Build() {
-        pipe->SetNext(nullptr);
-        return move(pipe);
-    }
-private:
-  unique_ptr<Worker> pipe;
-};
-*/
 
 class PipelineBuilder {
 public:
@@ -231,6 +158,13 @@ public:
 private:
     vector<unique_ptr<Worker>> workers_;
 };
+
+
+ostream& operator<<(ostream& out, const Email& m){
+    out << m.from << "\n"
+        << m.to << "\n"
+        << m.body << "\n";
+}
 
 
 void TestSanity() {
