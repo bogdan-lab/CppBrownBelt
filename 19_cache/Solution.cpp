@@ -1,5 +1,6 @@
 #include "Common.h"
 #include <list>
+#include <unordered_map>
 #include <algorithm>
 #include <mutex>
 #include <atomic>
@@ -12,40 +13,39 @@ public:
       shared_ptr<IBooksUnpacker> books_unpacker,
       const Settings& settings
   ): max_memory_(settings.max_memory), unpacker_(move(books_unpacker)) {
-    current_memory_ = 0;
+    used_memory_ = 0;
   }
 
   BookPtr GetBook(const string& book_name) override {
     lock_guard<mutex> g(m);
-      //find book in cache
-      auto filter = [book_name](pair<string, BookPtr> el){
-        return book_name==el.first;
-      };
-      auto it = find_if(cache_.begin(), cache_.end(), filter);
-      if (it == cache_.end()){
+      if (cache_.count(book_name)==0){
           //not found -> unpack
           unique_ptr<IBook> book = unpacker_->UnpackBook(book_name);
           if(book->GetContent().size()>max_memory_){
               return move(book);
           }
-          while(book->GetContent().size()>(max_memory_ - current_memory_)){
-              current_memory_ -= cache_.back().second->GetContent().size();
-              cache_.pop_back();
+          while(book->GetContent().size()>(max_memory_ - used_memory_)){
+              used_memory_ -= rang.back()->GetContent().size();
+              cache_.erase(rang.back()->GetName());
+              rang.pop_back();
           }
           //add book to front
-          cache_.push_front(make_pair(book_name, move(book)));
-          return cache_.front().second;
+          used_memory_ += book->GetContent().size();
+          rang.push_front(move(book));
+          cache_[book_name] = rang.begin();
+          return *(rang.begin());
       }
       else {
-          return it->second;
+          return *cache_[book_name];
       }
   }
 
 private:
-  atomic<size_t> current_memory_;
+  size_t used_memory_;
   const size_t max_memory_;
   shared_ptr<IBooksUnpacker> unpacker_;
-  list<pair<string, BookPtr>> cache_;
+  list<BookPtr> rang;
+  unordered_map<string, list<BookPtr>::iterator> cache_;
   mutex m;
 };
 
