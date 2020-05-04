@@ -36,7 +36,11 @@ public:
           return *(rang.begin());
       }
       else {
-          return *cache_[book_name];
+          BookPtr tmp_book = *cache_[book_name];
+          rang.erase(cache_[book_name]);
+          rang.push_front(move(tmp_book));
+          cache_[book_name] = rang.begin();
+          return *(rang.begin());
       }
   }
 
