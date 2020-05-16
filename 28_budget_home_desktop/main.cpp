@@ -103,7 +103,7 @@ private:
 
     static map<size_t, double>::iterator AddPoint(map<size_t, double>& bg_data, size_t date){
         auto [it, success] = bg_data.insert({date, 0.0});
-        if(success && (it!=bg_data.begin() || next(it)!=bg_data.end())){
+        if(success && it!=bg_data.begin() && next(it)!=bg_data.end()){
             it->second = prev(it)->second;
         }
         return it;
@@ -369,13 +369,13 @@ void TestWithSpend(){
 
 
 int main(){
-    TestRunner tr;
+    /*TestRunner tr;
     RUN_TEST(tr, TestGetDate);
     RUN_TEST(tr, TestConvertToDayNum);
     RUN_TEST(tr, TestReadCommand);
     RUN_TEST(tr, TestDayDifference);
     RUN_TEST(tr, TestComputeIncome);
-    RUN_TEST(tr, TestWithSpend);
+    RUN_TEST(tr, TestWithSpend);*/
     cout << setprecision(25);
     ProcessCommands(cin, cout);
     return 0;
