@@ -14,7 +14,8 @@ using namespace std;
 enum Actions{
     ComputeIncome,
     Earn,
-    PayTax
+    PayTax,
+    Spend
 };
 
 
@@ -75,19 +76,19 @@ struct Command{
     Actions action_;
     size_t from_;
     size_t to_;
-    optional<size_t> sum_;
+    optional<size_t> value_;
     Command() = default;
 };
 
 
 bool operator==(const Command& lhs, const Command& rhs){
-    return lhs.action_==rhs.action_ && lhs.from_==rhs.from_ && lhs.to_==rhs.to_ && lhs.sum_==rhs.sum_;
+    return lhs.action_==rhs.action_ && lhs.from_==rhs.from_ && lhs.to_==rhs.to_ && lhs.value_==rhs.value_;
 }
 
 ostream& operator<<(ostream& out, const Command& cmd){
     out << "ACT = " << cmd.action_ << "  |  FROM = " << cmd.from_ << "  |  TO = " << cmd.to_;
-    if(cmd.sum_){
-        out << "  |  SUM = " << cmd.sum_.value();
+    if(cmd.value_){
+        out << "  |  SUM = " << cmd.value_.value();
     }
     return out;
 }
@@ -97,71 +98,80 @@ ostream& operator<<(ostream& out, const Command& cmd){
 class Budget{
 private:
     map<size_t, double> income_;  //date_from -> money_each_day
+    map<size_t, double> spendings_;     //date_from -> money each day
 
 
-    pair<map<size_t, double>::iterator, bool> AddPoint(size_t date){
-        auto it = income_.lower_bound(date);
-        if((it==income_.begin() && income_.begin()->first!=date) || it==income_.end()){
-             return income_.insert({date, 0.0});
+    static map<size_t, double>::iterator AddPoint(map<size_t, double>& bg_data, size_t date){
+        auto [it, success] = bg_data.insert({date, 0.0});
+        if(success && (it!=bg_data.begin() || next(it)!=bg_data.end())){
+            it->second = prev(it)->second;
         }
-        else if (it->first != date){
-            return income_.insert({date, prev(it)->second});
-        }
-        else {
-            return {it, true};
-        }
+        return it;
     }
-
 
 public:
     optional<double> ApplyCommand(Command cmd){
         if(cmd.action_==Actions::Earn){
-            this->EarnMoney(cmd.from_, cmd.to_, cmd.sum_.value());
+            this->EarnMoney(cmd.from_, cmd.to_, cmd.value_.value());
             return nullopt;
         }
         else if (cmd.action_==Actions::PayTax){
-            this->PayTaxes(cmd.from_, cmd.to_);
+            this->PayTaxes(cmd.from_, cmd.to_, cmd.value_.value());
             return nullopt;
         }
-        else {
-            return this->ComputeIncome(cmd.from_, cmd.to_);
+        else if (cmd.action_==Actions::Spend){
+            this->SpendMoney(cmd.from_, cmd.to_, cmd.value_.value());
+            return nullopt;
+        }
+        else if (cmd.action_==Actions::ComputeIncome){
+            return this->CalculateIncome(cmd.from_, cmd.to_);
+        }
+        else{
+            throw invalid_argument("UNKNOWN ACTION");
         }
     }
 
     void EarnMoney(size_t from, size_t to, size_t sum){
         double sum_per_day = 1.0*sum/(to - from);
-        //map<size_t, double>::iterator it_from;
-        //map<size_t, double>::iterator it_to;
-        //bool status;
-        auto [it_from, status1] = AddPoint(from);
-        auto [it_to, status2] = AddPoint(to);
-        //auto it_from = income_.lower_bound(from);
-        //auto it_to = income_.lower_bound(to);
+        auto it_from = AddPoint(this->income_, from);
+        auto it_to = AddPoint(this->income_, to);
         for(auto it=it_from; it!=it_to; it++){
             it->second+=sum_per_day;
         }
     }
 
-    void PayTaxes(size_t from, size_t to){
-        auto [it_from, status1] = AddPoint(from);
-        auto [it_to, status2] = AddPoint(to);
-        //auto it_from = income_.lower_bound(from);
-        //auto it_to = income_.lower_bound(to);
+    void PayTaxes(size_t from, size_t to, size_t percentage){
+        auto it_from = AddPoint(this->income_, from);
+        auto it_to = AddPoint(this->income_, to);
         for(auto it=it_from; it!=it_to; it++){
-            it->second*=0.87;
+            if(it->second>0){
+                it->second*=1.0*(100-percentage)/100;
+            }
         }
     }
 
-    double ComputeIncome(size_t from, size_t to){
-        auto [it_from, status1] = AddPoint(from);
-        auto [it_to, status2] = AddPoint(to);
+    double CalculateIncome(size_t from, size_t to){
+        auto it_from = AddPoint(this->income_, from);
+        auto it_to = AddPoint(this->income_, to);
         double sum=0;
-        //auto it_from = income_.lower_bound(from);
-        //auto it_to = income_.lower_bound(to);
+        for(auto it=it_from; it!=it_to; it++){
+            sum+=it->second*(next(it)->first - it->first);
+        }
+        it_from = AddPoint(this->spendings_, from);
+        it_to = AddPoint(this->spendings_, to);
         for(auto it=it_from; it!=it_to; it++){
             sum+=it->second*(next(it)->first - it->first);
         }
         return sum;
+    }
+
+    void SpendMoney(size_t from, size_t to, size_t sum){
+        double sum_per_day = 1.0*sum/(to - from);
+        auto it_from = AddPoint(this->spendings_, from);
+        auto it_to = AddPoint(this->spendings_, to);
+        for(auto it=it_from; it!=it_to; it++){
+            it->second-=sum_per_day;
+        }
     }
 
 };
@@ -178,17 +188,28 @@ Command ReadCommand(istream& input){
         cmd.to_ = GetDateInDayNum(input)+1;
         size_t sum;
         input >> sum;
-        cmd.sum_ = sum;
+        cmd.value_ = sum;
     }
     else if (name=="PayTax"){
         cmd.action_ = Actions::PayTax;
         cmd.from_ = GetDateInDayNum(input);
         cmd.to_ = GetDateInDayNum(input)+1;
+        size_t percentage;
+        input >> percentage;
+        cmd.value_ = percentage;
     }
     else if (name=="ComputeIncome") {
         cmd.action_ = Actions::ComputeIncome;
         cmd.from_ = GetDateInDayNum(input);
         cmd.to_ = GetDateInDayNum(input)+1;
+    }
+    else if (name == "Spend"){
+        cmd.action_ = Actions::Spend;
+        cmd.from_ = GetDateInDayNum(input);
+        cmd.to_ = GetDateInDayNum(input)+1;
+        size_t sum;
+        input >> sum;
+        cmd.value_ = sum;
     }
     else {
         throw invalid_argument("UNKNOWN COMMAND");
@@ -205,7 +226,7 @@ void ProcessCommands(istream& input, ostream& output){
         Command cmd = ReadCommand(input);
         optional<double> res = bg.ApplyCommand(move(cmd));
         if(res){
-            output << setprecision(25) << res.value() << "\n";
+            output << res.value() << "\n";
         }
     }
 }
@@ -262,7 +283,7 @@ void TestReadCommand(){
         expected.action_ = Actions::Earn;
         expected.from_ = Date("2000-01-02").ConvertToDayNum();
         expected.to_ = Date("2000-01-06").ConvertToDayNum()+1;
-        expected.sum_ = 20;
+        expected.value_ = 20;
         ASSERT_EQUAL(got, expected);
     }
     {
@@ -273,18 +294,18 @@ void TestReadCommand(){
         expected.action_ = Actions::ComputeIncome;
         expected.from_ = Date("2000-01-01").ConvertToDayNum();
         expected.to_ = Date("2001-01-01").ConvertToDayNum()+1;
-        expected.sum_ = nullopt;
+        expected.value_ = nullopt;
         ASSERT_EQUAL(got, expected);
     }
     {
         stringstream ss;
-        ss << "PayTax 2000-01-02 2000-01-03";
+        ss << "PayTax 2000-01-02 2000-01-03 25";
         Command got = ReadCommand(ss);
         Command expected;
         expected.action_ = Actions::PayTax;
         expected.from_ = Date("2000-01-02").ConvertToDayNum();
         expected.to_ = Date("2000-01-03").ConvertToDayNum()+1;
-        expected.sum_ = nullopt;
+        expected.value_ = 25;
         ASSERT_EQUAL(got, expected);
     }
 }
@@ -295,7 +316,7 @@ void TestDayDifference(){
         Date from("2000-01-01");
         Date to("2000-01-05");
         size_t got = ComputeDaysDiff(to, from);
-        size_t expected =4;
+        size_t expected = 4;
         ASSERT_EQUAL(got, expected);
     }
     {
@@ -313,11 +334,11 @@ void TestComputeIncome(){
     test_input << 8;
     test_input << "Earn 2000-01-02 2000-01-06 20\n";
     test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
-    test_input << "PayTax 2000-01-02 2000-01-03\n";
+    test_input << "PayTax 2000-01-02 2000-01-03 13\n";
     test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
     test_input << "Earn 2000-01-03 2000-01-03 10\n";
     test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
-    test_input << "PayTax 2000-01-03 2000-01-03\n";
+    test_input << "PayTax 2000-01-03 2000-01-03 13\n";
     test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
     stringstream test_output;
     ProcessCommands(test_input, test_output);
@@ -328,14 +349,34 @@ void TestComputeIncome(){
 
 
 
+void TestWithSpend(){
+    stringstream test_input;
+    test_input << 8;
+    test_input << "Earn 2000-01-02 2000-01-06 20\n";
+    test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
+    test_input << "PayTax 2000-01-02 2000-01-03 13\n";
+    test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
+    test_input << "Spend 2000-12-30 2001-01-02 14\n";
+    test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
+    test_input << "PayTax 2000-12-30 2000-12-30 13\n";
+    test_input << "ComputeIncome 2000-01-01 2001-01-01\n";
+    stringstream test_output;
+    ProcessCommands(test_input, test_output);
+    stringstream expected;
+    expected <<"20\n18.96\n8.46\n8.46\n";
+    ASSERT_EQUAL(test_output.str(), expected.str());
+}
+
+
 int main(){
-    /*TestRunner tr;
+    TestRunner tr;
     RUN_TEST(tr, TestGetDate);
     RUN_TEST(tr, TestConvertToDayNum);
     RUN_TEST(tr, TestReadCommand);
     RUN_TEST(tr, TestDayDifference);
-    RUN_TEST(tr, TestComputeIncome);*/
-
+    RUN_TEST(tr, TestComputeIncome);
+    RUN_TEST(tr, TestWithSpend);
+    cout << setprecision(25);
     ProcessCommands(cin, cout);
     return 0;
 }
