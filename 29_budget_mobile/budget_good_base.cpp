@@ -99,15 +99,34 @@ struct BulkMoneyAdder {
   double delta = 0.0;
 };
 
-constexpr uint8_t TAX_PERCENTAGE = 13;
+struct BulkMoneySubtract {
+  double delta = 0.0;
+};
+
 
 struct BulkTaxApplier {
-  uint32_t percentage = 0;
+  double percent_as_part = 0;
 
   double ComputeFactor() const {
-    return 1.0 - percentage/100.0;
+    return 1.0 - percent_as_part;
   }
 };
+
+
+struct MoneyState{
+    double income_ = 0.0;
+    double outcome_ = 0.0;
+    MoneyState() = default;
+    MoneyState(double income, double outcome): income_(income), outcome_(outcome) {}
+
+    double GetPureIncome(){return income_ - outcome_; }
+
+};
+
+MoneyState operator+(const MoneyState& lhs, const MoneyState& rhs){
+    return {lhs.income_ + rhs.income_, lhs.outcome_ + rhs.outcome_};
+}
+
 
 class BulkLinearUpdater {
 public:
@@ -121,18 +140,28 @@ public:
       : tax_(tax)
   {}
 
+  BulkLinearUpdater(const BulkMoneySubtract& pay)
+      : subtract_(pay)
+  {}
+
   void CombineWith(const BulkLinearUpdater& other) {
+    if(other.tax_.percent_as_part>0){
+        tax_.percent_as_part *= other.tax_.percent_as_part;
+    }
     add_.delta = add_.delta * other.tax_.ComputeFactor() + other.add_.delta;
+    subtract_.delta += other.subtract_.delta;
   }
 
-  double Collapse(double origin, IndexSegment segment) const {
-    return origin * tax_.ComputeFactor() + add_.delta * segment.length();
+  MoneyState Collapse(MoneyState origin, IndexSegment segment) const {
+    return {origin.income_ * tax_.ComputeFactor() + add_.delta * segment.length(),
+            origin.outcome_ + subtract_.delta * segment.length()};
   }
 
 private:
   // apply tax first, then add
   BulkTaxApplier tax_;
   BulkMoneyAdder add_;
+  BulkMoneySubtract subtract_;
 };
 
 
@@ -312,7 +341,7 @@ IndexSegment MakeDateSegment(const Date& date_from, const Date& date_to) {
 }
 
 
-class BudgetManager : public SummingSegmentTree<double, BulkLinearUpdater> {
+class BudgetManager : public SummingSegmentTree<MoneyState, BulkLinearUpdater> {
 public:
     BudgetManager() : SummingSegmentTree(DAY_COUNT) {}
 };
@@ -325,7 +354,8 @@ struct Request {
   enum class Type {
     COMPUTE_INCOME,
     EARN,
-    PAY_TAX
+    PAY_TAX,
+    SPEND
   };
 
   Request(Type type) : type(type) {}
@@ -340,6 +370,7 @@ const unordered_map<string_view, Request::Type> STR_TO_REQUEST_TYPE = {
     {"ComputeIncome", Request::Type::COMPUTE_INCOME},
     {"Earn", Request::Type::EARN},
     {"PayTax", Request::Type::PAY_TAX},
+    {"Spend", Request::Type::SPEND}
 };
 
 template <typename ResultType>
@@ -361,7 +392,7 @@ struct ComputeIncomeRequest : ReadRequest<double> {
   }
 
   double Process(const BudgetManager& manager) const override {
-    return manager.ComputeSum(MakeDateSegment(date_from, date_to));
+    return manager.ComputeSum(MakeDateSegment(date_from, date_to)).GetPureIncome();
   }
 
   Date date_from = START_DATE;
@@ -396,13 +427,37 @@ struct PayTaxRequest : ModifyRequest {
   }
 
   void Process(BudgetManager& manager) const override {
-    manager.AddBulkOperation(MakeDateSegment(date_from, date_to), BulkTaxApplier{percentage});
+      double percent_as_part = percentage/100.0;
+    manager.AddBulkOperation(MakeDateSegment(date_from, date_to), BulkTaxApplier{percent_as_part});
   }
 
   Date date_from = START_DATE;
   Date date_to = START_DATE;
-  uint32_t percentage = 0;
+  int percentage = 0;
 };
+
+
+struct SpendRequest : ModifyRequest {
+  SpendRequest() : ModifyRequest(Type::SPEND) {}
+  void ParseFrom(string_view input) override {
+    date_from = Date::FromString(ReadToken(input));
+    date_to = Date::FromString(ReadToken(input));
+    outcome = ConvertToInt(input);
+  }
+
+  void Process(BudgetManager& manager) const override {
+      const auto date_segment = MakeDateSegment(date_from, date_to);
+      const double daily_outcome = outcome * 1.0 / date_segment.length();
+      manager.AddBulkOperation(date_segment, BulkMoneySubtract{daily_outcome});
+  }
+
+  Date date_from = START_DATE;
+  Date date_to = START_DATE;
+  uint32_t outcome = 0;
+};
+
+
+
 
 RequestHolder Request::Create(Request::Type type) {
   switch (type) {
@@ -412,6 +467,8 @@ RequestHolder Request::Create(Request::Type type) {
       return make_unique<EarnRequest>();
     case Request::Type::PAY_TAX:
       return make_unique<PayTaxRequest>();
+    case Request::Type::SPEND:
+      return make_unique<SpendRequest>();
     default:
       return nullptr;
   }
