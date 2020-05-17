@@ -433,7 +433,7 @@ struct PayTaxRequest : ModifyRequest {
 
   Date date_from = START_DATE;
   Date date_to = START_DATE;
-  int percentage = 0;
+  size_t percentage = 0;
 };
 
 
@@ -453,7 +453,7 @@ struct SpendRequest : ModifyRequest {
 
   Date date_from = START_DATE;
   Date date_to = START_DATE;
-  uint32_t outcome = 0;
+  size_t outcome = 0;
 };
 
 
