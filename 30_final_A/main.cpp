@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <unordered_map>
 #include <list>
 #include <string>
@@ -89,8 +90,8 @@ public:
     void AddBusStop(unique_ptr<Stop> new_stop){
         string_view rebinded_name = SaveStopName(new_stop->name_);
         new_stop->name_ = rebinded_name;
-        new_stop->latitude_ *= 180.0/PI;
-        new_stop->longitude_ *= 180.0/PI;
+        new_stop->latitude_ *= PI/180.0;
+        new_stop->longitude_ *= PI/180.0;
         stops_[rebinded_name] = move(new_stop);
     }
 
@@ -107,7 +108,7 @@ public:
         double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
                 cos(left->latitude_)*cos(right->latitude_)*(sin(left->longitude_)*sin(right->longitude_) +
                                                           cos(left->longitude_)*cos(right->longitude_));
-        return R_EARTH*acos(cos_alpha);
+        return R_EARTH*acos(cos_alpha)*1000;     //in m
     }
 
     const Stop* GetStops(string_view stop_key) const {
@@ -115,7 +116,11 @@ public:
     }
 
     const BusInfo* GetBus(int bus_id) const {
-        return buses_.at(bus_id).get();
+        auto it = buses_.find(bus_id);
+        if (it!=buses_.end()){
+            return it->second.get();
+        }
+        return nullptr;
     }
 
 };
@@ -294,19 +299,20 @@ void TestParcingRequest(){
 
 
 void TestReadInput(){
+    double PI = 3.1415926535;
     BusCatalog bc;
     {
         stringstream ss;
         ss << 3 << "\n";
-        ss << "Stop Stop N1: 3.14, 6.28\n";
+        ss << "Stop Stop N1: 90.0, 45.0\n";
         ss << "Bus 72: Zyzka - Kaluzka - Tepliy stan\n";
         ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3 > Stop N1\n";
         ReadInputData(bc, ss);
     }
     const auto stops = bc.GetStops("Stop N1");
     ASSERT_EQUAL("Stop N1", stops->name_);
-    ASSERT_EQUAL(3.14, stops->latitude_);
-    ASSERT_EQUAL(6.28, stops->longitude_);
+    ASSERT_EQUAL(0.5*PI, stops->latitude_);
+    ASSERT_EQUAL(0.25*PI, stops->longitude_);
     const auto bus1 = bc.GetBus(72);
     ASSERT_EQUAL(bus1->id_, 72);
     ASSERT_EQUAL(bus1->type_, BusInfo::Type::STRAIGHT);
@@ -329,12 +335,56 @@ void TestReadRequests(){
     ASSERT_EQUAL(get, expected);
 }
 
+
+void TestBusReply(){
+    stringstream ss;
+    ss << 10 << "\n";
+    ss << "Stop Tolstopaltsevo: 55.611087, 37.20829\n";
+    ss << "Stop Marushkino: 55.595884, 37.209755\n";
+    ss << "Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye\n";
+    ss << "Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka\n";
+    ss << "Stop Rasskazovka: 55.632761, 37.333324\n";
+    ss << "Stop Biryulyovo Zapadnoye: 55.574371, 37.6517\n";
+    ss << "Stop Biryusinka: 55.581065, 37.64839\n";
+    ss << "Stop Universam: 55.587655, 37.645687\n";
+    ss << "Stop Biryulyovo Tovarnaya: 55.592028, 37.653656\n";
+    ss << "Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164\n";
+    BusCatalog catalog;
+    ReadInputData(catalog, ss);
+    ss << 3 << "\n";
+    ss << "Bus 256\n";
+    ss << "Bus 750\n";
+    ss << "Bus 751\n";
+    vector<int> requests = ReadRequests(ss);
+    stringstream out;
+    ProcessRequests(catalog, requests, out);
+    string reply_1;
+    getline(out, reply_1);
+    string expected_1 = "Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length";
+    ASSERT_EQUAL(expected_1, reply_1);
+    string reply_2;
+    getline(out, reply_2);
+    string expected_2 = "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length";
+    ASSERT_EQUAL(expected_2, reply_2);
+    string reply_3;
+    getline(out, reply_3);
+    string expected_3 = "Bus 751: not found";
+    ASSERT_EQUAL(expected_3, reply_3);
+}
+
+
 int main(){
     TestRunner tr;
     RUN_TEST(tr, TestParcingRequest);
     RUN_TEST(tr, TestReadInput);
     RUN_TEST(tr, TestReadRequests);
+    RUN_TEST(tr, TestBusReply);
 
+    BusCatalog catalog;
+    ReadInputData(catalog, cin);
+    vector<int> bus_requests = ReadRequests(cin);
+    cout << setprecision(6);
+    ProcessRequests(catalog, bus_requests, cout);
 
     return 0;
 }
