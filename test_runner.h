@@ -7,6 +7,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <list>
 #include <unordered_map>
 
 using namespace std;
@@ -24,6 +25,15 @@ ostream& operator << (ostream& os, const vector<T>& s) {
   }
   return os << "}";
 }
+
+template <typename T>
+ostream& operator<<(ostream& out, const list<T>& given_list){
+    for(const auto& el : given_list){
+        out << el << "; ";
+    }
+    return out;
+}
+
 
 template <typename K, typename V>
 ostream& operator<<(ostream& out, const unordered_map<K, V>& cmap ){

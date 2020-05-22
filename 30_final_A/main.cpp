@@ -6,6 +6,9 @@
 #include <optional>
 #include <memory>
 #include <sstream>
+#include <unordered_set>
+#include <cmath>
+#include <algorithm>
 #include "test_runner.h"
 
 
@@ -13,8 +16,8 @@ using namespace std;
 
 
 string_view DeleteSpaces(string_view s){
-    if (s.back() == ' '){s.remove_suffix(1);}
-    if (s.front() == ' '){s.remove_prefix(1);}
+    while(s.back()==' '){s.remove_suffix(1);}
+    while(s.front()==' '){s.remove_prefix(1);}
     return s;
 }
 
@@ -29,21 +32,23 @@ string_view GetUntilSplitter(string_view& s, char el){
 }
 
 double ConvertToDouble(string_view s){
+    string_view tmp = DeleteSpaces(s);
     size_t pos;
-    return stod(string(s), &pos);
+    return stod(string(tmp), &pos);
 }
 
 int ConvertToInt(string_view s){
+    string_view tmp = DeleteSpaces(s);
     size_t pos;
-    return stoi(string(s), &pos);
+    return stoi(string(tmp), &pos);
 }
 
 struct Stop{
-    string name_;
-    optional<double> latitude_;
-    optional<double> longitude_;
+    string_view name_;
+    double latitude_;
+    double longitude_;
 
-    Stop(string n, optional<double> lat, optional<double> lon):
+    Stop(string_view n, double lat, double lon):
         name_(move(n)), latitude_(move(lat)), longitude_(move(lon)){}
 };
 
@@ -64,41 +69,53 @@ struct BusInfo{
 };
 
 class BusCatalog{
-using StopStruct = unordered_map<string_view, unique_ptr<Stop>>;
-using BusStruct = unordered_map<int, unique_ptr<BusInfo>>;
+    using StopStruct = unordered_map<string_view, unique_ptr<Stop>>;
+    using BusStruct = unordered_map<int, unique_ptr<BusInfo>>;
 
 private:
-     StopStruct stops_;
-     BusStruct buses_;
+    const double PI = 3.1415926535;
+    const double R_EARTH = 6371;     //km
 
-     unique_ptr<BusInfo> RebindStringView(unique_ptr<BusInfo> new_bus){
-         for(auto& it : new_bus->stop_names_){
+    unordered_set<string> stop_names_;
+    StopStruct stops_;
+    BusStruct buses_;
 
-         }
-     }
+    string_view SaveStopName(string_view new_stop_name){
+        auto res = stop_names_.insert(string(new_stop_name));
+        return *(res.first);
+    }
+
 public:
-    string_view AddBusStop(unique_ptr<Stop> new_stop){
-        string_view stop_name = string_view(new_stop->name_);
-        auto it = stops_.find(stop_name);
-        if(it==stops_.end()){
-            stops_[stop_name] = move(new_stop);
-            return stop_name;
-        }
-        else {
-            if(new_stop->latitude_){
-                it->second->latitude_ = new_stop->latitude_;
-                it->second->longitude_ = new_stop->longitude_;
-            }
-            return it->first;
-        }
+    void AddBusStop(unique_ptr<Stop> new_stop){
+        string_view rebinded_name = SaveStopName(new_stop->name_);
+        new_stop->name_ = rebinded_name;
+        new_stop->latitude_ *= 180.0/PI;
+        new_stop->longitude_ *= 180.0/PI;
+        stops_[rebinded_name] = move(new_stop);
     }
 
     void AddBus(unique_ptr<BusInfo> new_bus){
-
+        for(auto& el : new_bus->stop_names_){
+            el = SaveStopName(el);
+        }
+        buses_[new_bus->id_] = move(new_bus);
     }
 
-    Stop* GetStops(string_view stop_key) const {
+    double ComputeDistance(string_view lhs, string_view rhs) const {
+        const Stop *left = stops_.at(lhs).get();
+        const Stop *right = stops_.at(rhs).get();
+        double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
+                cos(left->latitude_)*cos(right->latitude_)*(sin(left->longitude_)*sin(right->longitude_) +
+                                                          cos(left->longitude_)*cos(right->longitude_));
+        return R_EARTH*acos(cos_alpha);
+    }
+
+    const Stop* GetStops(string_view stop_key) const {
         return stops_.at(stop_key).get();
+    }
+
+    const BusInfo* GetBus(int bus_id) const {
+        return buses_.at(bus_id).get();
     }
 
 };
@@ -108,7 +125,7 @@ unique_ptr<Stop> ReadStop(string_view request){
     string_view stop_name = GetUntilSplitter(request, ':');
     double latitude = ConvertToDouble(GetUntilSplitter(request, ','));
     double longitude = ConvertToDouble(request);
-    return make_unique<Stop>(Stop(string(stop_name), latitude, longitude));
+    return make_unique<Stop>(Stop(stop_name, latitude, longitude));
 }
 
 BusInfo::Type GetBusType(string_view s){
@@ -145,10 +162,17 @@ unique_ptr<BusInfo> ReadBus(string_view request){
 }
 
 
-
-void ReadInputData(BusCatalog& catalog, istream& in_stream){
+size_t ReadRequestCount(istream& in_stream){
     size_t request_count;
     in_stream >> request_count;
+    string dummy;
+    getline(in_stream, dummy);
+    return request_count;
+}
+
+
+void ReadInputData(BusCatalog& catalog, istream& in_stream){
+    size_t request_count = ReadRequestCount(in_stream);
     for (size_t i=0; i< request_count; i++){
         string request_line;
         getline(in_stream, request_line);
@@ -164,6 +188,86 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream){
     }
 }
 
+
+vector<int> ReadRequests(istream& in_stream){
+    size_t request_count = ReadRequestCount(in_stream);
+    vector<int> bus_ids;
+    bus_ids.reserve(request_count);
+    for(size_t i=0; i<request_count; i++){
+        string request_line;
+        getline(in_stream, request_line);
+        string_view request_view = string_view(request_line);
+        string_view request_name = GetUntilSplitter(request_view, ' ');
+        bus_ids.push_back(ConvertToInt(request_view));
+    }
+    return bus_ids;
+}
+
+
+struct BusReply{
+    int id_;
+    optional<size_t> num_stops_;
+    optional<size_t> unique_stops_;
+    optional<double> route_len_;
+
+    optional<size_t> GetAllStopsNum(const BusInfo* bus){
+        if(bus){
+            if(bus->type_==BusInfo::Type::STRAIGHT){return 2*bus->stop_names_.size()-1;}
+            else {return bus->stop_names_.size()+1;}
+        }
+        return nullopt;
+    }
+
+    optional<size_t> GetUniqueStopsNum(const BusInfo* bus){
+        if(bus){
+            return bus->stop_names_.size();
+        }
+        return nullopt;
+    }
+
+    optional<double> GetRouteLength(const BusCatalog& catalog, const BusInfo* bus){
+        if(bus){
+            double length = 0;
+            for(auto it=bus->stop_names_.begin(); it!=prev(bus->stop_names_.end()); it++){
+                auto lhs = it;
+                auto rhs = next(it);
+                length +=catalog.ComputeDistance(*lhs, *rhs);
+            }
+            if(bus->type_==BusInfo::Type::STRAIGHT){
+                return 2*length;
+            }
+            else{
+                length+= catalog.ComputeDistance(bus->stop_names_.back(), bus->stop_names_.front());
+                return length;
+            }
+        }
+        return nullopt;
+    }
+
+    BusReply(const BusCatalog& catalog, int bus_id): id_(bus_id){
+        const BusInfo* bus = catalog.GetBus(bus_id);
+        num_stops_ = GetAllStopsNum(bus);
+        unique_stops_ = GetUniqueStopsNum(bus);
+        route_len_ = GetRouteLength(catalog, bus);
+    }
+
+    void Reply(ostream& out_stream){
+        if(num_stops_){     //not beautiful way to check.....
+            out_stream << "Bus " << id_ <<": "<< num_stops_.value() << " stops on route, "
+                       << unique_stops_.value() << " unique stops, " <<route_len_.value() << " route length\n";
+        } else {
+            out_stream << "Bus " << id_ <<": not found\n";
+        }
+    }
+};
+
+
+void ProcessRequests(const BusCatalog& catalog, const vector<int> bus_ids, ostream& out_stream=cout){
+    for(int el : bus_ids){
+        BusReply reply(catalog, el);
+        reply.Reply(out_stream);
+    }
+}
 
 
 
@@ -191,151 +295,46 @@ void TestParcingRequest(){
 
 void TestReadInput(){
     BusCatalog bc;
-    stringstream ss;
-    ss << 1;
-    ss << "Stop Stop N1: 3.14, 6.28";
-    ReadInputData(bc, ss);
+    {
+        stringstream ss;
+        ss << 3 << "\n";
+        ss << "Stop Stop N1: 3.14, 6.28\n";
+        ss << "Bus 72: Zyzka - Kaluzka - Tepliy stan\n";
+        ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3 > Stop N1\n";
+        ReadInputData(bc, ss);
+    }
     const auto stops = bc.GetStops("Stop N1");
     ASSERT_EQUAL("Stop N1", stops->name_);
-    ASSERT_EQUAL(3.14, stops->latitude_.value());
-    ASSERT_EQUAL(6.28, stops->longitude_.value());
+    ASSERT_EQUAL(3.14, stops->latitude_);
+    ASSERT_EQUAL(6.28, stops->longitude_);
+    const auto bus1 = bc.GetBus(72);
+    ASSERT_EQUAL(bus1->id_, 72);
+    ASSERT_EQUAL(bus1->type_, BusInfo::Type::STRAIGHT);
+    list<string_view> expected1 = {"Zyzka", "Kaluzka", "Tepliy stan"};
+    ASSERT_EQUAL(bus1->stop_names_, expected1);
+    const auto bus2 = bc.GetBus(256);
+    ASSERT_EQUAL(bus2->id_, 256);
+    ASSERT_EQUAL(bus2->type_, BusInfo::Type::ROUND);
+    list<string_view> expected2 = { "Stop N1", "StopN2", "S T O P N 3"};
+    ASSERT_EQUAL(bus2->stop_names_, expected2);
+
 }
 
-
-
-/*
-enum BusType{
-    ROUND,
-    STRAIGHT
-};
-
-BusType GetBusType(string_view s){
-    string_view check_str = s.substr(0, 26);
-    size_t status = check_str.find("-");
-    if(status!=string::npos){
-        return BusType::STRAIGHT;
-    }
-    return BusType::ROUND;
+void TestReadRequests(){
+    stringstream ss;
+    ss << 3 << "\n";
+    ss << "Bus 72\n" << "Bus 81\n" << "Bus 60\n";
+    vector<int> get = ReadRequests(ss);
+    vector<int> expected = {72, 81, 60};
+    ASSERT_EQUAL(get, expected);
 }
-
-const unordered_map<BusType, char> BUS_TP_TO_SPLITTER = {
-    {BusType::STRAIGHT, '-'},
-    {BusType::ROUND, '>'}
-};
-
-struct InputRequest;
-using RequestHolder = unique_ptr<InputRequest>;
-
-struct InputRequest{
-    enum Type{
-        STOP_READ,
-        BUS_READ,
-    };
-
-    InputRequest(Type type): type_(type) {}
-    static RequestHolder Create(Type type);
-    virtual  void ParseLine(string_view input) = 0;
-    virtual void Process(BusCatalog& catalog) const = 0;
-    virtual ~ InputRequest() = default;
-
-    const Type type_;
-};
-
-
-struct SaveBusRequest : InputRequest {
-    SaveBusRequest() : InputRequest::InputRequest(InputRequest::Type::BUS_READ) {}
-
-    void ParseLine(string_view input) override {
-        string_view id_str = GetUntilSplitter(input, ':');
-        id_ = ConvertToInt(id_str);
-        bus_type_ = GetBusType(input);
-        char splitter = BUS_TP_TO_SPLITTER.at(bus_type_);
-        while(!input.empty()){
-            stops_.push_back(string(GetUntilSplitter(input, splitter)));
-        }
-    }
-
-    void Process(BusCatalog& catalog) const override{
-
-    }
-
-    int id_;
-    BusType bus_type_;
-    list<string> stops_;
-};
-
-struct SaveStopRequest : InputRequest {
-    SaveStopRequest() : InputRequest::InputRequest(InputRequest::Type::STOP_READ) {}
-
-    void ParseLine(string_view input) override {
-        name_ = string(GetUntilSplitter(input, ':'));
-        string_view latitude_str = GetUntilSplitter(input, ',');
-        latitude_ = ConvertToDouble(latitude_str);
-        longitude_ = ConvertToDouble(input);
-    }
-
-    void Process(BusCatalog& catalog) const override {
-
-    }
-
-    string name_;
-    double latitude_;
-    double longitude_;
-};
-
-RequestHolder InputRequest::Create(Type type){
-    switch (type) {
-    case InputRequest::Type::BUS_READ:
-        return make_unique<SaveBusRequest>();
-    case InputRequest::Type::STOP_READ:
-        return make_unique<SaveStopRequest>();
-    default:
-        return nullptr;
-    }
-}
-
-const unordered_map<string_view, InputRequest::Type> STR_TO_INPUT_REQUEST = {
-    {"Bus", InputRequest::Type::BUS_READ},
-    {"Stop", InputRequest::Type::STOP_READ}
-};
-
-optional<InputRequest::Type> GetInputRequestType(string_view& request_str){
-    string_view request_name = GetUntilSplitter(request_str, ' ');
-    const auto it = STR_TO_INPUT_REQUEST.find(request_name);
-    if(it!=STR_TO_INPUT_REQUEST.end()){
-        return it->second;
-    }
-    return nullopt;
-}
-
-RequestHolder ParseRequest(string_view request_str){
-    optional<InputRequest::Type> request_type = GetInputRequestType(request_str);
-    if(!request_type){
-        throw invalid_argument("UNKNOWN REQUEST NAME");
-    }
-    RequestHolder request = InputRequest::Create(request_type.value());
-    if(!request){throw invalid_argument("UNKNOWN REQUEST TYPE");}
-    request -> ParseLine(request_str);
-    return request;
-}
-
-vector<RequestHolder> ReadInputRequests(istream& in_stream){
-  size_t request_count;
-  in_stream >> request_count;
-  vector<RequestHolder> requests;
-  requests.reserve(request_count);
-  for(size_t i=0; i<request_count; i++){
-      string request_str;
-      getline(in_stream, request_str);
-      requests.push_back(move(ParseRequest(request_str)));
-  }
-  return requests;
-}
-*/
 
 int main(){
     TestRunner tr;
     RUN_TEST(tr, TestParcingRequest);
     RUN_TEST(tr, TestReadInput);
+    RUN_TEST(tr, TestReadRequests);
+
+
     return 0;
 }
