@@ -47,34 +47,6 @@ size_t ConvertToUInt(string_view s){
     return stoul(string(tmp), nullptr);
 }
 
-//struct RealDistance{
-//    string_view start_;
-//    string_view end_;
-//    size_t dist_;
-
-//    RealDistance(string_view lhs, string_view rhs, size_t d):
-//        start_(lhs), end_(rhs), dist_(d){}
-//};
-
-//struct RealDistanceHasher{
-//    hash<string_view> sv_hash;
-
-//    size_t operator()(const RealDistance& p) const {
-//        size_t x = 2946901;
-//        return sv_hash(p.start_)*x + sv_hash(p.end_);
-//    }
-
-//};
-
-//bool operator==(const RealDistance& lhs, const RealDistance& rhs){
-//    return lhs.start_==rhs.start_ && lhs.end_==rhs.end_;
-//}
-
-//ostream& operator<<(ostream& out, const RealDistance& el){
-//    out << el.start_ << " -> " << el.end_ << " " << el.dist_;
-//    return out;
-//}
-
 using RealDistance = pair<string_view, size_t>;
 
 ostream& operator<<(ostream& out, const RealDistance& el){
@@ -105,6 +77,7 @@ struct BusInfo{
     list<string_view> stop_names_;
     unordered_set<string_view> unique_stops_ = {};
     double route_len_ = 0.0;
+    size_t real_dist_ = 0.0;
 
     BusInfo(string_view id, Type type, list<string_view> snames):
         id_(id), type_(type), stop_names_(move(snames)) {}
@@ -171,12 +144,36 @@ private:
             length +=this->ComputeDistance(*lhs, *rhs);
         }
         if(bus->type_==BusInfo::Type::STRAIGHT){
-            return 2*length;
+            length*=2;
         }
         else{
             length+= this->ComputeDistance(bus->stop_names_.back(), bus->stop_names_.front());
-            return length;
         }
+        return length;
+    }
+
+    size_t ComputeBusRealDist(const BusInfo* bus) const {
+        size_t length = 0;
+        for(auto it=bus->stop_names_.begin(); it!=prev(bus->stop_names_.end()); it++){
+            auto start = it;
+            auto end = next(it);
+            auto interval = make_pair(*start, *end);
+            length +=all_distances_.at(interval);
+        }
+        if(bus->type_==BusInfo::Type::STRAIGHT){
+            //go backward
+            for(auto it = prev(bus->stop_names_.end()); it!=next(bus->stop_names_.end()); it--){
+                auto start = it;
+                auto end = prev(it);
+                auto interval = make_pair(*start, *end);
+                length += all_distances_.at(interval);
+            }
+        }
+        else {
+            auto final_interval = make_pair(bus->stop_names_.back(), bus->stop_names_.front());
+            length+=all_distances_.at(final_interval);
+        }
+        return length;
     }
 
     unordered_set<string_view> GetUniqueStops(const BusInfo* bus) const {
@@ -190,6 +187,7 @@ private:
     void UpdateBusRouteLens(){
         for(const auto& name : bus_names_){
             buses_[name]->route_len_ = ComputeBusRouteLen(buses_[name].get());
+            buses_[name]->real_dist_ = ComputeBusRealDist(buses_[name].get());
         }
     }
 
@@ -266,6 +264,9 @@ public:
         return nullptr;
     }
 
+    size_t GetDistStructSize() const {
+        return all_distances_.size();
+    }
 };
 
 unique_ptr<Stop> ReadStop(string_view request){
@@ -381,6 +382,7 @@ struct BusReply : Request{
     optional<size_t> num_stops_;
     optional<size_t> unique_stops_;
     optional<double> route_len_;
+    optional<size_t> real_distance_;
 
     BusReply(): Request::Request(Request::Type::BUS) {}
 
@@ -406,6 +408,13 @@ struct BusReply : Request{
         return nullopt;
     }
 
+    optional<size_t> GetRealDistance(const BusInfo* bus){
+        if (bus){
+            return bus->real_dist_;
+        }
+        return nullopt;
+    }
+
     void ParseFromString(const BusCatalog& catalog, string_view request) override{
         id_ = DeleteSpaces(request);
         const BusInfo* bus = catalog.GetBus(id_);
@@ -413,12 +422,14 @@ struct BusReply : Request{
         num_stops_ = GetAllStopsNum(bus);
         unique_stops_ = GetUniqueStopsNum(bus);
         route_len_ = GetRouteLength(bus);
+        real_distance_ = GetRealDistance(bus);
     }
 
     void Reply(ostream& out_stream) const override{
         if(found_){
             out_stream << "Bus " << id_ <<": "<< num_stops_.value() << " stops on route, "
-                       << unique_stops_.value() << " unique stops, " <<route_len_.value() << " route length\n";
+                       << unique_stops_.value() << " unique stops, " <<route_len_.value() << " route length"
+                       << real_distance_.value()/route_len_.value() << "curvature\n";
         } else {
             out_stream << "Bus " << id_ <<": not found\n";
         }
@@ -602,8 +613,8 @@ void TestBusReply(){
     ss << "Bus 751\n";
     stringstream out;
     ProcessRequests(catalog, ss, out);
-    vector<string> expected = {"Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length",
-                               "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length",
+    vector<string> expected = {"Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length 0.0 curvature",
+                               "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length 0.0 curvature",
                                "Bus 751: not found"};
     for(size_t i=0; i<expected.size(); i++){
         string get;
@@ -640,8 +651,8 @@ void TestWithStops(){
     ReadInputData(catalog, in);
     stringstream out;
     ProcessRequests(catalog, in, out);
-    vector<string> expected = {"Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length",
-                                "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length",
+    vector<string> expected = {"Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length 0.0 curvature",
+                                "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length 0.0 curvature",
                                 "Bus 751: not found",
                                 "Stop Samara: not found",
                                 "Stop Prazhskaya: no buses",
@@ -653,6 +664,57 @@ void TestWithStops(){
     }
 
 }
+
+void TestSavingExtraStops(){
+    stringstream in;
+    in << 1 <<"\n";
+    in << "Stop Fancy: 1, 2, 10m to N1, 20m to N2, 30m to N3\n";
+    BusCatalog bc;
+    ReadInputData(bc, in);
+    ASSERT_EQUAL(6, bc.GetDistStructSize());
+}
+
+
+void TestNewFormatStops(){
+    stringstream in;
+    in <<"13\n";
+    in <<"Stop Tolstopaltsevo: 55.611087, 37.20829, 3900m to Marushkino\n";
+    in <<"Stop Marushkino: 55.595884, 37.209755, 9900m to Rasskazovka\n";
+    in <<"Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye\n";
+    in <<"Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka\n";
+    in <<"Stop Rasskazovka: 55.632761, 37.333324\n";
+    in <<"Stop Biryulyovo Zapadnoye: 55.574371, 37.6517, 7500m to Rossoshanskaya ulitsa, 1800m to Biryusinka, 2400m to Universam\n";
+    in <<"Stop Biryusinka: 55.581065, 37.64839, 750m to Universam\n";
+    in <<"Stop Universam: 55.587655, 37.645687, 5600m to Rossoshanskaya ulitsa, 900m to Biryulyovo Tovarnaya\n";
+    in <<"Stop Biryulyovo Tovarnaya: 55.592028, 37.653656, 1300m to Biryulyovo Passazhirskaya\n";
+    in <<"Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164, 1200m to Biryulyovo Zapadnoye\n";
+    in <<"Bus 828: Biryulyovo Zapadnoye > Universam > Rossoshanskaya ulitsa > Biryulyovo Zapadnoye\n";
+    in <<"Stop Rossoshanskaya ulitsa: 55.595579, 37.605757\n";
+    in <<"Stop Prazhskaya: 55.611678, 37.603831\n";
+    in <<"6\n";
+    in <<"Bus 256\n";
+    in <<"Bus 750\n";
+    in <<"Bus 751\n";
+    in <<"Stop Samara\n";
+    in <<"Stop Prazhskaya\n";
+    in <<"Stop Biryulyovo Zapadnoye\n";
+    BusCatalog catalog;
+    ReadInputData(catalog, in);
+    stringstream out;
+    vector<string>expected ={"Bus 256: 6 stops on route, 5 unique stops, 5950 route length, 1.361239 curvature\n",
+                  "Bus 750: 5 stops on route, 3 unique stops, 27600 route length, 1.318084 curvature\n",
+                  "Bus 751: not found\n",
+                      "Stop Samara: not found\n",
+                  "Stop Prazhskaya: no buses\n",
+                  "Stop Biryulyovo Zapadnoye: buses 256 828\n"};
+    for(size_t i=0; i<expected.size(); i++){
+        string got;
+        getline(out, got);
+        ASSERT_EQUAL(expected[i], got);
+    }
+
+}
+
 //*/
 
 
@@ -660,9 +722,11 @@ int main(){
     TestRunner tr;
     RUN_TEST(tr, TestParcingRequest);
     RUN_TEST(tr, TestReadStops);
-    RUN_TEST(tr, TestReadBuses);
-    RUN_TEST(tr, TestBusReply);
-    RUN_TEST(tr, TestWithStops);
+//    RUN_TEST(tr, TestReadBuses);
+//    RUN_TEST(tr, TestBusReply);
+//    RUN_TEST(tr, TestWithStops);
+    RUN_TEST(tr, TestSavingExtraStops);
+    RUN_TEST(tr, TestNewFormatStops);
 
 
     BusCatalog catalog;
