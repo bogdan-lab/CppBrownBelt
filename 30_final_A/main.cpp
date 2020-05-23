@@ -40,12 +40,6 @@ double ConvertToDouble(string_view s){
     return stod(string(tmp), &pos);
 }
 
-//int ConvertToInt(string_view s){
-//    string_view tmp = DeleteSpaces(s);
-//    size_t pos;
-//    return stoi(string(tmp), &pos);
-//}
-
 struct Stop{
     string_view name_;
     double latitude_;
@@ -78,7 +72,7 @@ class BusCatalog{
 
 private:
     const double PI = 3.1415926535;
-    const double R_EARTH = 6371;     //km
+    const double R_EARTH = 6371000;     //m
 
     unordered_set<string> bus_names_;
     unordered_set<string> stop_names_;
@@ -93,6 +87,31 @@ private:
     string_view SaveBusName(string_view new_bus_name){
         auto res = bus_names_.insert(string(new_bus_name));
         return *(res.first);
+    }
+
+    double ComputeDistance(string_view lhs, string_view rhs) const {
+        const Stop *left = stops_.at(lhs).get();
+        const Stop *right = stops_.at(rhs).get();
+        double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
+                cos(left->latitude_)*cos(right->latitude_)*(sin(left->longitude_)*sin(right->longitude_) +
+                                                          cos(left->longitude_)*cos(right->longitude_));
+        return R_EARTH*acos(cos_alpha);     //in m
+    }
+
+    double ComputeBusRouteLen(const BusInfo* bus) const {
+        double length = 0.0;
+        for(auto it=bus->stop_names_.begin(); it!=prev(bus->stop_names_.end()); it++){
+            auto lhs = it;
+            auto rhs = next(it);
+            length +=this->ComputeDistance(*lhs, *rhs);
+        }
+        if(bus->type_==BusInfo::Type::STRAIGHT){
+            return 2*length;
+        }
+        else{
+            length+= this->ComputeDistance(bus->stop_names_.back(), bus->stop_names_.front());
+            return length;
+        }
     }
 
 public:
@@ -111,16 +130,13 @@ public:
         buses_[new_bus->id_] = move(new_bus);
     }
 
-    double ComputeDistance(string_view lhs, string_view rhs) const {
-        const Stop *left = stops_.at(lhs).get();
-        const Stop *right = stops_.at(rhs).get();
-        double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
-                cos(left->latitude_)*cos(right->latitude_)*(sin(left->longitude_)*sin(right->longitude_) +
-                                                          cos(left->longitude_)*cos(right->longitude_));
-        return R_EARTH*acos(cos_alpha)*1000;     //in m
+    void UpdateBusRouteLens(){
+        for(const auto& name : bus_names_){
+            buses_[name]->route_len_ = ComputeBusRouteLen(buses_[name].get());
+        }
     }
 
-    const Stop* GetStops(string_view stop_key) const {
+    const Stop* GetStop(string_view stop_key) const {
         return stops_.at(stop_key).get();
     }
 
@@ -200,6 +216,7 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream=cin){
             catalog.AddBusStop(move(stop));
         }
     }
+    catalog.UpdateBusRouteLens();
 }
 
 
@@ -225,21 +242,9 @@ struct BusReply{
         return nullopt;
     }
 
-    optional<double> GetRouteLength(const BusCatalog& catalog, const BusInfo* bus){
+    optional<double> GetRouteLength(const BusInfo* bus){
         if(bus){
-            double length = 0;
-            for(auto it=bus->stop_names_.begin(); it!=prev(bus->stop_names_.end()); it++){
-                auto lhs = it;
-                auto rhs = next(it);
-                length +=catalog.ComputeDistance(*lhs, *rhs);
-            }
-            if(bus->type_==BusInfo::Type::STRAIGHT){
-                return 2*length;
-            }
-            else{
-                length+= catalog.ComputeDistance(bus->stop_names_.back(), bus->stop_names_.front());
-                return length;
-            }
+            return bus->route_len_;
         }
         return nullopt;
     }
@@ -248,7 +253,7 @@ struct BusReply{
         const BusInfo* bus = catalog.GetBus(bus_id);
         num_stops_ = GetAllStopsNum(bus);
         unique_stops_ = GetUniqueStopsNum(bus);
-        route_len_ = GetRouteLength(catalog, bus);
+        route_len_ = GetRouteLength(bus);
     }
 
     void Reply(ostream& out_stream){
@@ -302,32 +307,86 @@ void TestParcingRequest(){
 }
 
 
-void TestReadInput(){
+//void TestReadInput(){
+//    double PI = 3.1415926535;
+//    BusCatalog bc;
+//    {
+//        stringstream ss;
+//        ss << 4 << "\n";
+//        ss << "Stop Stop N1: 90.0, 45.0\n";
+//        ss << "Bus 72: Zyzka - Kaluzka - Tepliy stan\n";
+//        ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3           > Stop N1\n";
+//        ss << "Bus ubileyniy: A > B > C > D > A\n";
+//        ReadInputData(bc, ss);
+//    }
+//    const auto stops = bc.GetStops("Stop N1");
+//    ASSERT_EQUAL("Stop N1", stops->name_);
+//    ASSERT_EQUAL(0.5*PI, stops->latitude_);
+//    ASSERT_EQUAL(0.25*PI, stops->longitude_);
+//    const auto bus1 = bc.GetBus("72");
+//    ASSERT_EQUAL(bus1->id_, "72");
+//    ASSERT_EQUAL(bus1->type_, BusInfo::Type::STRAIGHT);
+//    list<string_view> expected1 = {"Zyzka", "Kaluzka", "Tepliy stan"};
+//    ASSERT_EQUAL(bus1->stop_names_, expected1);
+//    const auto bus2 = bc.GetBus("256");
+//    ASSERT_EQUAL(bus2->id_, "256");
+//    ASSERT_EQUAL(bus2->type_, BusInfo::Type::ROUND);
+//    list<string_view> expected2 = { "Stop N1", "StopN2", "S T O P N 3"};
+//    ASSERT_EQUAL(bus2->stop_names_, expected2);
+
+//}
+
+
+void TestReadStops(){
     double PI = 3.1415926535;
     BusCatalog bc;
     {
         stringstream ss;
-        ss << 4 << "\n";
+        ss << 2 << "\n";
         ss << "Stop Stop N1: 90.0, 45.0\n";
-        ss << "Bus 72: Zyzka - Kaluzka - Tepliy stan\n";
-        ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3           > Stop N1\n";
-        ss << "Bus ubileyniy: A > B > C > D > A\n";
+        ss << "Stop               S T O P            : 90.0, 90.0\n";
         ReadInputData(bc, ss);
     }
-    const auto stops = bc.GetStops("Stop N1");
-    ASSERT_EQUAL("Stop N1", stops->name_);
-    ASSERT_EQUAL(0.5*PI, stops->latitude_);
-    ASSERT_EQUAL(0.25*PI, stops->longitude_);
-    const auto bus1 = bc.GetBus("72");
-    ASSERT_EQUAL(bus1->id_, "72");
+    const auto stop1 = bc.GetStop("Stop N1");
+    ASSERT_EQUAL("Stop N1", stop1->name_);
+    ASSERT_EQUAL(0.5*PI, stop1->latitude_);
+    ASSERT_EQUAL(0.25*PI, stop1->longitude_);
+    const auto stop2 = bc.GetStop("S T O P");
+    ASSERT_EQUAL("S T O P", stop2->name_);
+    ASSERT_EQUAL(0.5*PI, stop2->latitude_);
+    ASSERT_EQUAL(0.5*PI, stop2->longitude_);
+}
+
+
+void TestReadBuses(){
+    const double R_EARTH = 6371000;
+    const double PI = 3.1415926535;
+    BusCatalog bc;
+    {
+        stringstream ss;
+        ss << 6 << "\n";
+        ss << "Stop N1: 90.0, 90.0\n";
+        ss << "Stop N2: 90.0, 45.0\n";
+        ss << "Stop N3: 45.0, 45.0\n";
+        ss << "Stop N4: 45.0, 90.0\n";
+
+        ss << "Bus straight  : N1 - N2 - N3 - N4\n";
+        ss << "Bus circle  : N1 > N2 > N1\n";
+        ReadInputData(bc, ss);
+    }
+
+    const auto bus1 = bc.GetBus("straight");
+    ASSERT_EQUAL(bus1->id_, "straight");
     ASSERT_EQUAL(bus1->type_, BusInfo::Type::STRAIGHT);
-    list<string_view> expected1 = {"Zyzka", "Kaluzka", "Tepliy stan"};
+    list<string_view> expected1 = {"N1", "N2", "N3", "N4"};
     ASSERT_EQUAL(bus1->stop_names_, expected1);
-    const auto bus2 = bc.GetBus("256");
-    ASSERT_EQUAL(bus2->id_, "256");
+    //ASSERT_EQUAL(bus1->route_len_, 2*PI*R_EARTH);
+    const auto bus2 = bc.GetBus("circle");
+    ASSERT_EQUAL(bus2->id_, "circle");
     ASSERT_EQUAL(bus2->type_, BusInfo::Type::ROUND);
-    list<string_view> expected2 = { "Stop N1", "StopN2", "S T O P N 3"};
+    list<string_view> expected2 = {"N1", "N2"};
     ASSERT_EQUAL(bus2->stop_names_, expected2);
+    //ASSERT_EQUAL(bus2->route_len_, 0.5*PI*R_EARTH);
 
 }
 
@@ -375,7 +434,8 @@ void TestBusReply(){
 int main(){
     TestRunner tr;
     RUN_TEST(tr, TestParcingRequest);
-    RUN_TEST(tr, TestReadInput);
+    RUN_TEST(tr, TestReadStops);
+    RUN_TEST(tr, TestReadBuses);
     RUN_TEST(tr, TestBusReply);
 
 
