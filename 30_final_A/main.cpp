@@ -13,10 +13,11 @@
 #include <cmath>
 #include <algorithm>
 
-//#include "test_runner.h"
+#include "test_runner.h"
 
 
 using namespace std;
+
 
 
 string_view DeleteSpaces(string_view s){
@@ -25,29 +26,63 @@ string_view DeleteSpaces(string_view s){
     return s;
 }
 
-string_view GetUntilSplitter(string_view& s, char el){
-    size_t pos = s.find(el);
+string_view GetUntilSplitter(string_view& s, string_view splitter){
+    size_t pos = s.find(splitter.front());
     string_view info;
     if (pos != string::npos){
         info = s.substr(0, pos);
-        s.remove_prefix(pos+1);
+        s.remove_prefix(pos+splitter.size());
     }else {s.swap(info);}
     return DeleteSpaces(info);
 }
 
 double ConvertToDouble(string_view s){
     string_view tmp = DeleteSpaces(s);
-    size_t pos;
-    return stod(string(tmp), &pos);
+    return stod(string(tmp), nullptr);
+}
+
+
+size_t ConvertToUInt(string_view s){
+    string_view tmp = DeleteSpaces(s);
+    return stoul(string(tmp), nullptr);
+}
+
+struct RealDistance{
+    string_view start_;
+    string_view end_;
+    size_t dist_;
+
+    RealDistance(string_view lhs, string_view rhs, size_t d):
+        start_(lhs), end_(rhs), dist_(d){}
+};
+
+struct RealDistanceHasher{
+    hash<string_view> sv_hash;
+
+    size_t operator()(const RealDistance& p) const {
+        size_t x = 2946901;
+        return sv_hash(p.start_)*x + sv_hash(p.end_);
+    }
+
+};
+
+bool operator==(const RealDistance& lhs, const RealDistance& rhs){
+    return lhs.start_==rhs.start_ && lhs.end_==rhs.end_;
+}
+
+ostream& operator<<(ostream& out, const RealDistance& el){
+    out << el.start_ << " -> " << el.end_ << " " << el.dist_;
+    return out;
 }
 
 struct Stop{
     string_view name_;
     double latitude_;
     double longitude_;
+    vector<RealDistance> distances_;
 
-    Stop(string_view n, double lat, double lon):
-        name_(move(n)), latitude_(move(lat)), longitude_(move(lon)){}
+    Stop(string_view n, double lat, double lon, vector<RealDistance> dist):
+        name_(move(n)), latitude_(move(lat)), longitude_(move(lon)), distances_(move(dist)){}
 };
 
 
@@ -69,8 +104,8 @@ struct BusInfo{
 };
 
 class BusCatalog{
-    using StopStruct = unordered_map<string_view, unique_ptr<Stop>>;
-    using BusStruct = unordered_map<string_view, unique_ptr<BusInfo>>;
+using StopStruct = unordered_map<string_view, unique_ptr<Stop>>;
+using BusStruct = unordered_map<string_view, unique_ptr<BusInfo>>;
 
 private:
     const double PI = 3.1415926535;
@@ -81,6 +116,7 @@ private:
     unordered_map<string_view, set<string_view>> stop_to_bus_;
     StopStruct stops_;
     BusStruct buses_;
+    unordered_set<RealDistance, RealDistanceHasher> all_distances_;
 
     string_view SaveStopName(string_view new_stop_name){
         auto res = stop_names_.insert(string(new_stop_name));
@@ -194,12 +230,19 @@ public:
 
 };
 
-
 unique_ptr<Stop> ReadStop(string_view request){
-    string_view stop_name = GetUntilSplitter(request, ':');
-    double latitude = ConvertToDouble(GetUntilSplitter(request, ','));
-    double longitude = ConvertToDouble(request);
-    return make_unique<Stop>(Stop(stop_name, latitude, longitude));
+    const size_t NUM_OF_STOPS = 100;
+    string_view stop_name = GetUntilSplitter(request, ":");
+    double latitude = ConvertToDouble(GetUntilSplitter(request, ","));
+    double longitude = ConvertToDouble(GetUntilSplitter(request, ","));
+    vector<RealDistance> distances;
+    distances.reserve(NUM_OF_STOPS);
+    while(!request.empty()){
+        size_t dist = ConvertToUInt(GetUntilSplitter(request, "m to"));
+        string_view other_stop = GetUntilSplitter(request, ",");
+        distances.push_back({stop_name, other_stop, dist});
+    }
+    return make_unique<Stop>(Stop(stop_name, latitude, longitude, distances));
 }
 
 BusInfo::Type GetBusType(string_view s){
@@ -211,14 +254,14 @@ BusInfo::Type GetBusType(string_view s){
     return BusInfo::Type::ROUND;
 }
 
-char GetSplitter(BusInfo::Type type){
+string_view GetSplitter(BusInfo::Type type){
     if (type==BusInfo::ROUND){
-        return '>';
+        return ">";
     }
-    return '-';
+    return "-";
 }
 
-list<string_view> ReadBusStops(string_view request, char splitter){
+list<string_view> ReadBusStops(string_view request, string_view splitter){
     list<string_view> stop_names;
     while(!request.empty()){
         stop_names.push_back(GetUntilSplitter(request, splitter));
@@ -227,9 +270,9 @@ list<string_view> ReadBusStops(string_view request, char splitter){
 }
 
 unique_ptr<BusInfo> ReadBus(string_view request){
-    string_view id = GetUntilSplitter(request, ':');
+    string_view id = GetUntilSplitter(request, ":");
     BusInfo::Type type = GetBusType(request);
-    char splitter = GetSplitter(type);
+    string_view splitter = GetSplitter(type);
     list<string_view> stop_names = ReadBusStops(request, splitter);
     if(type==BusInfo::Type::ROUND){stop_names.pop_back();}
     return make_unique<BusInfo>(BusInfo(id, type, move(stop_names)));
@@ -251,7 +294,7 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream=cin){
         string request_line;
         getline(in_stream, request_line);
         string_view request_view = string_view(request_line);
-        string_view data_name = GetUntilSplitter(request_view, ' ');
+        string_view data_name = GetUntilSplitter(request_view, " ");
         if(data_name=="Bus"){
             unique_ptr<BusInfo> bus = ReadBus(request_view);
             catalog.AddBus(move(bus));
@@ -400,7 +443,7 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream&
         string request_line;
         getline(in_stream, request_line);
         string_view request_view = string_view(request_line);
-        string_view request_name = GetUntilSplitter(request_view, ' ');
+        string_view request_name = GetUntilSplitter(request_view, " ");
         Request::Type type = STR_TO_REQUEST_TYPE.at(request_name);
         RequestHolder res = Request::Create(type);
         res->ParseFromString(catalog, request_view);
@@ -412,26 +455,39 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream&
 
 //-------------TESTS------------------------
 
-/*
+///*
 
 void TestParcingRequest(){
     string_view test = "Stop Tolstopaltsevo: 55.611087, 37.20829";
-    ASSERT_EQUAL("Stop", GetUntilSplitter(test, ' '));
-    ASSERT_EQUAL("Tolstopaltsevo", GetUntilSplitter(test, ':'));
-    string_view tmp = GetUntilSplitter(test, ',');
+    ASSERT_EQUAL("Stop", GetUntilSplitter(test, " "));
+    ASSERT_EQUAL("Tolstopaltsevo", GetUntilSplitter(test, ":"));
+    string_view tmp = GetUntilSplitter(test, ",");
     ASSERT_EQUAL("55.611087", tmp);
     ASSERT_EQUAL(55.611087, ConvertToDouble(tmp));
     ASSERT_EQUAL(37.20829, ConvertToDouble(test));
 
+    test = "Stop FancyStop: 15.0, 20.0, 150m to N1, 250m to N2, 350m to N3";
+    GetUntilSplitter(test, " ");
+    auto get = ReadStop(test);
+    ASSERT_EQUAL("FancyStop", get->name_);
+    ASSERT_EQUAL(15.0, get->latitude_);
+    ASSERT_EQUAL(20.0, get->longitude_);
+    vector<RealDistance> expected = {{"FancyStop", "N1", 150},
+                                     {"FancyStop", "N2", 250},
+                                     {"FancyStop", "N3", 350}};
+    for(size_t i = 0; i<expected.size(); i++){
+        ASSERT_EQUAL(expected[i], get->distances_[i]);
+    }
+
     test = "Bus 750: N1 - Stop 2 - Stop number 3";
-    ASSERT_EQUAL("Bus", GetUntilSplitter(test, ' '));
-    tmp = GetUntilSplitter(test, ':');
+    ASSERT_EQUAL("Bus", GetUntilSplitter(test, " "));
+    tmp = GetUntilSplitter(test, ":");
     ASSERT_EQUAL("750", tmp);
     ASSERT_EQUAL(BusInfo::Type::STRAIGHT, GetBusType(test));
     ASSERT_EQUAL(BusInfo::Type::ROUND, GetBusType("test > test > test"));
-    ASSERT_EQUAL("N1", GetUntilSplitter(test, '-'));
-    ASSERT_EQUAL("Stop 2", GetUntilSplitter(test, '-'));
-    ASSERT_EQUAL("Stop number 3", GetUntilSplitter(test, '-'));
+    ASSERT_EQUAL("N1", GetUntilSplitter(test, "-"));
+    ASSERT_EQUAL("Stop 2", GetUntilSplitter(test, "-"));
+    ASSERT_EQUAL("Stop number 3", GetUntilSplitter(test, "-"));
 }
 
 
@@ -457,8 +513,6 @@ void TestReadStops(){
 
 
 void TestReadBuses(){
-    const double R_EARTH = 6371000;
-    const double PI = 3.1415926535;
     BusCatalog bc;
     {
         stringstream ss;
@@ -561,16 +615,16 @@ void TestWithStops(){
     }
 
 }
-*/
+//*/
 
 
 int main(){
-//    TestRunner tr;
-//    RUN_TEST(tr, TestParcingRequest);
-//    RUN_TEST(tr, TestReadStops);
-//    RUN_TEST(tr, TestReadBuses);
-//    RUN_TEST(tr, TestBusReply);
-//    RUN_TEST(tr, TestWithStops);
+    TestRunner tr;
+    RUN_TEST(tr, TestParcingRequest);
+    RUN_TEST(tr, TestReadStops);
+    RUN_TEST(tr, TestReadBuses);
+    RUN_TEST(tr, TestBusReply);
+    RUN_TEST(tr, TestWithStops);
 
 
     BusCatalog catalog;
