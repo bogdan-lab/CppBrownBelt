@@ -12,7 +12,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include "test_runner.h"
+//#include "test_runner.h"
 
 
 using namespace std;
@@ -60,6 +60,7 @@ struct BusInfo{
     string_view id_;
     Type type_;
     list<string_view> stop_names_;
+    size_t unique_stops_ = 0;
     double route_len_ = 0.0;
 
     BusInfo(string_view id, Type type, list<string_view> snames):
@@ -114,6 +115,26 @@ private:
         }
     }
 
+    size_t CalcUniqueStops(const BusInfo* bus) const {
+        unordered_set<string_view> unique;
+        for(const auto& el : bus->stop_names_){
+            unique.insert(el);
+        }
+        return unique.size();
+    }
+
+    void UpdateBusRouteLens(){
+        for(const auto& name : bus_names_){
+            buses_[name]->route_len_ = ComputeBusRouteLen(buses_[name].get());
+        }
+    }
+
+    void UpdateBusUniqueStops(){
+        for(const auto& name : bus_names_){
+            buses_[name]->unique_stops_ = CalcUniqueStops(buses_[name].get());
+        }
+    }
+
 public:
     void AddBusStop(unique_ptr<Stop> new_stop){
         new_stop->name_ = SaveStopName(new_stop->name_);
@@ -130,10 +151,9 @@ public:
         buses_[new_bus->id_] = move(new_bus);
     }
 
-    void UpdateBusRouteLens(){
-        for(const auto& name : bus_names_){
-            buses_[name]->route_len_ = ComputeBusRouteLen(buses_[name].get());
-        }
+    void UpdateBusInfo(){
+        UpdateBusRouteLens();
+        UpdateBusUniqueStops();
     }
 
     const Stop* GetStop(string_view stop_key) const {
@@ -216,7 +236,7 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream=cin){
             catalog.AddBusStop(move(stop));
         }
     }
-    catalog.UpdateBusRouteLens();
+    catalog.UpdateBusInfo();
 }
 
 
@@ -237,7 +257,7 @@ struct BusReply{
 
     optional<size_t> GetUniqueStopsNum(const BusInfo* bus){
         if(bus){
-            return bus->stop_names_.size();
+            return bus->unique_stops_;
         }
         return nullopt;
     }
@@ -283,7 +303,7 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream&
 
 
 //-------------TESTS------------------------
-///*
+/*
 
 
 void TestParcingRequest(){
@@ -305,36 +325,6 @@ void TestParcingRequest(){
     ASSERT_EQUAL("Stop 2", GetUntilSplitter(test, '-'));
     ASSERT_EQUAL("Stop number 3", GetUntilSplitter(test, '-'));
 }
-
-
-//void TestReadInput(){
-//    double PI = 3.1415926535;
-//    BusCatalog bc;
-//    {
-//        stringstream ss;
-//        ss << 4 << "\n";
-//        ss << "Stop Stop N1: 90.0, 45.0\n";
-//        ss << "Bus 72: Zyzka - Kaluzka - Tepliy stan\n";
-//        ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3           > Stop N1\n";
-//        ss << "Bus ubileyniy: A > B > C > D > A\n";
-//        ReadInputData(bc, ss);
-//    }
-//    const auto stops = bc.GetStops("Stop N1");
-//    ASSERT_EQUAL("Stop N1", stops->name_);
-//    ASSERT_EQUAL(0.5*PI, stops->latitude_);
-//    ASSERT_EQUAL(0.25*PI, stops->longitude_);
-//    const auto bus1 = bc.GetBus("72");
-//    ASSERT_EQUAL(bus1->id_, "72");
-//    ASSERT_EQUAL(bus1->type_, BusInfo::Type::STRAIGHT);
-//    list<string_view> expected1 = {"Zyzka", "Kaluzka", "Tepliy stan"};
-//    ASSERT_EQUAL(bus1->stop_names_, expected1);
-//    const auto bus2 = bc.GetBus("256");
-//    ASSERT_EQUAL(bus2->id_, "256");
-//    ASSERT_EQUAL(bus2->type_, BusInfo::Type::ROUND);
-//    list<string_view> expected2 = { "Stop N1", "StopN2", "S T O P N 3"};
-//    ASSERT_EQUAL(bus2->stop_names_, expected2);
-
-//}
 
 
 void TestReadStops(){
@@ -426,17 +416,17 @@ void TestBusReply(){
     ASSERT_EQUAL(expected_3, reply_3);
 }
 
-//*/
+*/
 
 
 
 
 int main(){
-    TestRunner tr;
-    RUN_TEST(tr, TestParcingRequest);
-    RUN_TEST(tr, TestReadStops);
-    RUN_TEST(tr, TestReadBuses);
-    RUN_TEST(tr, TestBusReply);
+//    TestRunner tr;
+//    RUN_TEST(tr, TestParcingRequest);
+//    RUN_TEST(tr, TestReadStops);
+//    RUN_TEST(tr, TestReadBuses);
+//    RUN_TEST(tr, TestBusReply);
 
 
     BusCatalog catalog;
