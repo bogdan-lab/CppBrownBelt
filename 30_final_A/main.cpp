@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <unordered_map>
 #include <list>
+#include <vector>
 #include <string>
 #include <string_view>
 #include <optional>
@@ -10,6 +11,7 @@
 #include <unordered_set>
 #include <cmath>
 #include <algorithm>
+
 #include "test_runner.h"
 
 
@@ -38,11 +40,11 @@ double ConvertToDouble(string_view s){
     return stod(string(tmp), &pos);
 }
 
-int ConvertToInt(string_view s){
-    string_view tmp = DeleteSpaces(s);
-    size_t pos;
-    return stoi(string(tmp), &pos);
-}
+//int ConvertToInt(string_view s){
+//    string_view tmp = DeleteSpaces(s);
+//    size_t pos;
+//    return stoi(string(tmp), &pos);
+//}
 
 struct Stop{
     string_view name_;
@@ -61,22 +63,24 @@ struct BusInfo{
         STRAIGHT,
     };
 
-    int id_;
+    string_view id_;
     Type type_;
     list<string_view> stop_names_;
+    double route_len_ = 0.0;
 
-    BusInfo(int id, Type type, list<string_view> snames):
+    BusInfo(string_view id, Type type, list<string_view> snames):
         id_(id), type_(type), stop_names_(move(snames)) {}
 };
 
 class BusCatalog{
     using StopStruct = unordered_map<string_view, unique_ptr<Stop>>;
-    using BusStruct = unordered_map<int, unique_ptr<BusInfo>>;
+    using BusStruct = unordered_map<string_view, unique_ptr<BusInfo>>;
 
 private:
     const double PI = 3.1415926535;
     const double R_EARTH = 6371;     //km
 
+    unordered_set<string> bus_names_;
     unordered_set<string> stop_names_;
     StopStruct stops_;
     BusStruct buses_;
@@ -86,16 +90,21 @@ private:
         return *(res.first);
     }
 
+    string_view SaveBusName(string_view new_bus_name){
+        auto res = bus_names_.insert(string(new_bus_name));
+        return *(res.first);
+    }
+
 public:
     void AddBusStop(unique_ptr<Stop> new_stop){
-        string_view rebinded_name = SaveStopName(new_stop->name_);
-        new_stop->name_ = rebinded_name;
+        new_stop->name_ = SaveStopName(new_stop->name_);
         new_stop->latitude_ *= PI/180.0;
         new_stop->longitude_ *= PI/180.0;
-        stops_[rebinded_name] = move(new_stop);
+        stops_[new_stop->name_] = move(new_stop);
     }
 
     void AddBus(unique_ptr<BusInfo> new_bus){
+        new_bus->id_ = SaveBusName(new_bus->id_);
         for(auto& el : new_bus->stop_names_){
             el = SaveStopName(el);
         }
@@ -115,7 +124,7 @@ public:
         return stops_.at(stop_key).get();
     }
 
-    const BusInfo* GetBus(int bus_id) const {
+    const BusInfo* GetBus(string_view bus_id) const {
         auto it = buses_.find(bus_id);
         if (it!=buses_.end()){
             return it->second.get();
@@ -158,7 +167,7 @@ list<string_view> ReadBusStops(string_view request, char splitter){
 }
 
 unique_ptr<BusInfo> ReadBus(string_view request){
-    int id = ConvertToInt(GetUntilSplitter(request, ':'));
+    string_view id = GetUntilSplitter(request, ':');
     BusInfo::Type type = GetBusType(request);
     char splitter = GetSplitter(type);
     list<string_view> stop_names = ReadBusStops(request, splitter);
@@ -176,7 +185,7 @@ size_t ReadRequestCount(istream& in_stream){
 }
 
 
-void ReadInputData(BusCatalog& catalog, istream& in_stream){
+void ReadInputData(BusCatalog& catalog, istream& in_stream=cin){
     size_t request_count = ReadRequestCount(in_stream);
     for (size_t i=0; i< request_count; i++){
         string request_line;
@@ -194,23 +203,9 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream){
 }
 
 
-vector<int> ReadRequests(istream& in_stream){
-    size_t request_count = ReadRequestCount(in_stream);
-    vector<int> bus_ids;
-    bus_ids.reserve(request_count);
-    for(size_t i=0; i<request_count; i++){
-        string request_line;
-        getline(in_stream, request_line);
-        string_view request_view = string_view(request_line);
-        string_view request_name = GetUntilSplitter(request_view, ' ');
-        bus_ids.push_back(ConvertToInt(request_view));
-    }
-    return bus_ids;
-}
-
 
 struct BusReply{
-    int id_;
+    string_view id_;
     optional<size_t> num_stops_;
     optional<size_t> unique_stops_;
     optional<double> route_len_;
@@ -249,7 +244,7 @@ struct BusReply{
         return nullopt;
     }
 
-    BusReply(const BusCatalog& catalog, int bus_id): id_(bus_id){
+    BusReply(const BusCatalog& catalog, string_view bus_id): id_(bus_id){
         const BusInfo* bus = catalog.GetBus(bus_id);
         num_stops_ = GetAllStopsNum(bus);
         unique_stops_ = GetUniqueStopsNum(bus);
@@ -267,13 +262,23 @@ struct BusReply{
 };
 
 
-void ProcessRequests(const BusCatalog& catalog, const vector<int> bus_ids, ostream& out_stream=cout){
-    for(int el : bus_ids){
-        BusReply reply(catalog, el);
+void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream& out_stream=cout){
+    size_t request_count = ReadRequestCount(in_stream);
+    for(size_t i=0; i<request_count; i++){
+        string request_line;
+        getline(in_stream, request_line);
+        string_view request_view = string_view(request_line);
+        string_view request_name = GetUntilSplitter(request_view, ' ');
+        string_view bus_id = request_view;
+        BusReply reply(catalog, bus_id);
         reply.Reply(out_stream);
     }
 }
 
+
+
+//-------------TESTS------------------------
+///*
 
 
 void TestParcingRequest(){
@@ -289,7 +294,6 @@ void TestParcingRequest(){
     ASSERT_EQUAL("Bus", GetUntilSplitter(test, ' '));
     tmp = GetUntilSplitter(test, ':');
     ASSERT_EQUAL("750", tmp);
-    ASSERT_EQUAL(750, ConvertToInt(tmp));
     ASSERT_EQUAL(BusInfo::Type::STRAIGHT, GetBusType(test));
     ASSERT_EQUAL(BusInfo::Type::ROUND, GetBusType("test > test > test"));
     ASSERT_EQUAL("N1", GetUntilSplitter(test, '-'));
@@ -303,36 +307,28 @@ void TestReadInput(){
     BusCatalog bc;
     {
         stringstream ss;
-        ss << 3 << "\n";
+        ss << 4 << "\n";
         ss << "Stop Stop N1: 90.0, 45.0\n";
         ss << "Bus 72: Zyzka - Kaluzka - Tepliy stan\n";
-        ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3 > Stop N1\n";
+        ss << "Bus 256: Stop N1 > StopN2 > S T O P N 3           > Stop N1\n";
+        ss << "Bus ubileyniy: A > B > C > D > A\n";
         ReadInputData(bc, ss);
     }
     const auto stops = bc.GetStops("Stop N1");
     ASSERT_EQUAL("Stop N1", stops->name_);
     ASSERT_EQUAL(0.5*PI, stops->latitude_);
     ASSERT_EQUAL(0.25*PI, stops->longitude_);
-    const auto bus1 = bc.GetBus(72);
-    ASSERT_EQUAL(bus1->id_, 72);
+    const auto bus1 = bc.GetBus("72");
+    ASSERT_EQUAL(bus1->id_, "72");
     ASSERT_EQUAL(bus1->type_, BusInfo::Type::STRAIGHT);
     list<string_view> expected1 = {"Zyzka", "Kaluzka", "Tepliy stan"};
     ASSERT_EQUAL(bus1->stop_names_, expected1);
-    const auto bus2 = bc.GetBus(256);
-    ASSERT_EQUAL(bus2->id_, 256);
+    const auto bus2 = bc.GetBus("256");
+    ASSERT_EQUAL(bus2->id_, "256");
     ASSERT_EQUAL(bus2->type_, BusInfo::Type::ROUND);
     list<string_view> expected2 = { "Stop N1", "StopN2", "S T O P N 3"};
     ASSERT_EQUAL(bus2->stop_names_, expected2);
 
-}
-
-void TestReadRequests(){
-    stringstream ss;
-    ss << 3 << "\n";
-    ss << "Bus 72\n" << "Bus 81\n" << "Bus 60\n";
-    vector<int> get = ReadRequests(ss);
-    vector<int> expected = {72, 81, 60};
-    ASSERT_EQUAL(get, expected);
 }
 
 
@@ -355,9 +351,8 @@ void TestBusReply(){
     ss << "Bus 256\n";
     ss << "Bus 750\n";
     ss << "Bus 751\n";
-    vector<int> requests = ReadRequests(ss);
     stringstream out;
-    ProcessRequests(catalog, requests, out);
+    ProcessRequests(catalog, ss, out);
     string reply_1;
     getline(out, reply_1);
     string expected_1 = "Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length";
@@ -372,19 +367,22 @@ void TestBusReply(){
     ASSERT_EQUAL(expected_3, reply_3);
 }
 
+//*/
+
+
+
 
 int main(){
     TestRunner tr;
     RUN_TEST(tr, TestParcingRequest);
     RUN_TEST(tr, TestReadInput);
-    RUN_TEST(tr, TestReadRequests);
     RUN_TEST(tr, TestBusReply);
 
+
     BusCatalog catalog;
-    ReadInputData(catalog, cin);
-    vector<int> bus_requests = ReadRequests(cin);
+    ReadInputData(catalog);
     cout << setprecision(6);
-    ProcessRequests(catalog, bus_requests, cout);
+    ProcessRequests(catalog);
 
     return 0;
 }
