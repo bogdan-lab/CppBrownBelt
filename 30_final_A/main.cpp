@@ -12,7 +12,7 @@
 #include <cmath>
 #include <algorithm>
 
-//#include "test_runner.h"
+#include "test_runner.h"
 
 
 using namespace std;
@@ -240,12 +240,43 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream=cin){
 }
 
 
+struct Request;
+using RequestHolder = unique_ptr<Request>;
 
-struct BusReply{
-    string_view id_;
+
+struct Request{
+
+    enum Type{
+        BUS,
+        STOP
+    };
+
+Type type_;
+
+Request(Type type) : type_(type) {}
+virtual ~Request()=default;
+Request(const Request& other) = delete;
+Request& operator=(const Request& other) = delete;
+
+static RequestHolder Create(Type type);
+virtual void ParseFromString(const BusCatalog& catalog, string_view request) = 0;
+virtual void Reply(ostream& out_stream) = 0;
+};
+
+
+const unordered_map<string_view, Request::Type> STR_TO_REQUEST_TYPE = {
+    {"Bus", Request::Type::BUS},
+    {"Stop", Request::Type::STOP}
+};
+
+
+struct BusReply : Request{
+    string_view id_ = {};
     optional<size_t> num_stops_;
     optional<size_t> unique_stops_;
     optional<double> route_len_;
+
+    BusReply(): Request::Request(Request::Type::BUS) {}
 
     optional<size_t> GetAllStopsNum(const BusInfo* bus){
         if(bus){
@@ -269,14 +300,15 @@ struct BusReply{
         return nullopt;
     }
 
-    BusReply(const BusCatalog& catalog, string_view bus_id): id_(bus_id){
-        const BusInfo* bus = catalog.GetBus(bus_id);
+    void ParseFromString(const BusCatalog& catalog, string_view request) override{
+        id_ = DeleteSpaces(request);
+        const BusInfo* bus = catalog.GetBus(id_);
         num_stops_ = GetAllStopsNum(bus);
         unique_stops_ = GetUniqueStopsNum(bus);
         route_len_ = GetRouteLength(bus);
     }
 
-    void Reply(ostream& out_stream){
+    void Reply(ostream& out_stream) override{
         if(num_stops_){     //not beautiful way to check.....
             out_stream << "Bus " << id_ <<": "<< num_stops_.value() << " stops on route, "
                        << unique_stops_.value() << " unique stops, " <<route_len_.value() << " route length\n";
@@ -287,6 +319,26 @@ struct BusReply{
 };
 
 
+struct StopReply : Request{
+    StopReply(): Request::Request(Request::Type::STOP) {}
+};
+
+
+
+
+
+
+RequestHolder Request::Create(Request::Type type){
+    switch (type) {
+    case Request::Type::BUS:
+        return make_unique<BusReply>();
+    //case Request::Type::STOP:
+    //    return make_unique<StopReply>();
+    default:
+        return nullptr;
+    }
+}
+
 void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream& out_stream=cout){
     size_t request_count = ReadRequestCount(in_stream);
     for(size_t i=0; i<request_count; i++){
@@ -294,16 +346,17 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream&
         getline(in_stream, request_line);
         string_view request_view = string_view(request_line);
         string_view request_name = GetUntilSplitter(request_view, ' ');
-        string_view bus_id = request_view;
-        BusReply reply(catalog, bus_id);
-        reply.Reply(out_stream);
+        Request::Type type = STR_TO_REQUEST_TYPE.at(request_name);
+        RequestHolder res = Request::Create(type);
+        res->ParseFromString(catalog, request_view);
+        res->Reply(out_stream);
     }
 }
 
 
 
 //-------------TESTS------------------------
-/*
+
 
 
 void TestParcingRequest(){
@@ -416,17 +469,17 @@ void TestBusReply(){
     ASSERT_EQUAL(expected_3, reply_3);
 }
 
-*/
+
 
 
 
 
 int main(){
-//    TestRunner tr;
-//    RUN_TEST(tr, TestParcingRequest);
-//    RUN_TEST(tr, TestReadStops);
-//    RUN_TEST(tr, TestReadBuses);
-//    RUN_TEST(tr, TestBusReply);
+    TestRunner tr;
+    RUN_TEST(tr, TestParcingRequest);
+    RUN_TEST(tr, TestReadStops);
+    RUN_TEST(tr, TestReadBuses);
+    RUN_TEST(tr, TestBusReply);
 
 
     BusCatalog catalog;
