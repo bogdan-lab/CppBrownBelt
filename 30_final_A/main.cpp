@@ -47,31 +47,38 @@ size_t ConvertToUInt(string_view s){
     return stoul(string(tmp), nullptr);
 }
 
-struct RealDistance{
-    string_view start_;
-    string_view end_;
-    size_t dist_;
+//struct RealDistance{
+//    string_view start_;
+//    string_view end_;
+//    size_t dist_;
 
-    RealDistance(string_view lhs, string_view rhs, size_t d):
-        start_(lhs), end_(rhs), dist_(d){}
-};
+//    RealDistance(string_view lhs, string_view rhs, size_t d):
+//        start_(lhs), end_(rhs), dist_(d){}
+//};
 
-struct RealDistanceHasher{
-    hash<string_view> sv_hash;
+//struct RealDistanceHasher{
+//    hash<string_view> sv_hash;
 
-    size_t operator()(const RealDistance& p) const {
-        size_t x = 2946901;
-        return sv_hash(p.start_)*x + sv_hash(p.end_);
-    }
+//    size_t operator()(const RealDistance& p) const {
+//        size_t x = 2946901;
+//        return sv_hash(p.start_)*x + sv_hash(p.end_);
+//    }
 
-};
+//};
 
-bool operator==(const RealDistance& lhs, const RealDistance& rhs){
-    return lhs.start_==rhs.start_ && lhs.end_==rhs.end_;
-}
+//bool operator==(const RealDistance& lhs, const RealDistance& rhs){
+//    return lhs.start_==rhs.start_ && lhs.end_==rhs.end_;
+//}
+
+//ostream& operator<<(ostream& out, const RealDistance& el){
+//    out << el.start_ << " -> " << el.end_ << " " << el.dist_;
+//    return out;
+//}
+
+using RealDistance = pair<string_view, size_t>;
 
 ostream& operator<<(ostream& out, const RealDistance& el){
-    out << el.start_ << " -> " << el.end_ << " " << el.dist_;
+    out << el.first << "; " << el.second;
     return out;
 }
 
@@ -79,7 +86,7 @@ struct Stop{
     string_view name_;
     double latitude_;
     double longitude_;
-    vector<RealDistance> distances_;
+    vector<RealDistance> distances_ = {};
 
     Stop(string_view n, double lat, double lon, vector<RealDistance> dist):
         name_(move(n)), latitude_(move(lat)), longitude_(move(lon)), distances_(move(dist)){}
@@ -103,11 +110,29 @@ struct BusInfo{
         id_(id), type_(type), stop_names_(move(snames)) {}
 };
 
+
+struct PairHasher{
+        hash<string_view> sv_hash;
+
+        size_t operator()(const pair<string_view, string_view>& el) const {
+            return  2946901*sv_hash(el.first) + sv_hash(el.second);
+        }
+
+   };
+
+bool operator==(const pair<string_view, string_view>& lhs, const pair<string_view, string_view>& rhs){
+    return lhs.first==rhs.first && lhs.second==rhs.second;
+}
+
 class BusCatalog{
 using StopStruct = unordered_map<string_view, unique_ptr<Stop>>;
 using BusStruct = unordered_map<string_view, unique_ptr<BusInfo>>;
 
+
+using DistStruct = unordered_map<pair<string_view, string_view>, size_t, PairHasher>;
+
 private:
+
     const double PI = 3.1415926535;
     const double R_EARTH = 6371000;     //m
 
@@ -116,7 +141,8 @@ private:
     unordered_map<string_view, set<string_view>> stop_to_bus_;
     StopStruct stops_;
     BusStruct buses_;
-    unordered_set<RealDistance, RealDistanceHasher> all_distances_;
+    DistStruct all_distances_;
+
 
     string_view SaveStopName(string_view new_stop_name){
         auto res = stop_names_.insert(string(new_stop_name));
@@ -181,11 +207,23 @@ private:
             }
         }
     }
+
+    void AddRealDistance(string_view start, RealDistance& new_dist){
+        new_dist.first = SaveStopName(new_dist.first);
+        auto fact = make_pair(start, new_dist.first);
+        all_distances_[fact] = new_dist.second;
+        auto alternative = make_pair(new_dist.first, start);
+        all_distances_.insert(make_pair(alternative, new_dist.second));
+    }
+
 public:
     void AddBusStop(unique_ptr<Stop> new_stop){
         new_stop->name_ = SaveStopName(new_stop->name_);
         new_stop->latitude_ *= PI/180.0;
         new_stop->longitude_ *= PI/180.0;
+        for(auto& el : new_stop->distances_){
+            AddRealDistance(new_stop->name_, el);
+        }
         stops_[new_stop->name_] = move(new_stop);
     }
 
@@ -240,7 +278,7 @@ unique_ptr<Stop> ReadStop(string_view request){
     while(!request.empty()){
         size_t dist = ConvertToUInt(GetUntilSplitter(request, "m to"));
         string_view other_stop = GetUntilSplitter(request, ",");
-        distances.push_back({stop_name, other_stop, dist});
+        distances.push_back(make_pair(other_stop, dist));
     }
     return make_unique<Stop>(Stop(stop_name, latitude, longitude, distances));
 }
@@ -472,9 +510,9 @@ void TestParcingRequest(){
     ASSERT_EQUAL("FancyStop", get->name_);
     ASSERT_EQUAL(15.0, get->latitude_);
     ASSERT_EQUAL(20.0, get->longitude_);
-    vector<RealDistance> expected = {{"FancyStop", "N1", 150},
-                                     {"FancyStop", "N2", 250},
-                                     {"FancyStop", "N3", 350}};
+    vector<RealDistance> expected = {{"N1", 150},
+                                     {"N2", 250},
+                                     {"N3", 350}};
     for(size_t i = 0; i<expected.size(); i++){
         ASSERT_EQUAL(expected[i], get->distances_[i]);
     }
