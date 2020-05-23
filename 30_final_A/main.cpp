@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <unordered_map>
 #include <list>
+#include <set>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -12,7 +13,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include "test_runner.h"
+//#include "test_runner.h"
 
 
 using namespace std;
@@ -60,7 +61,7 @@ struct BusInfo{
     string_view id_;
     Type type_;
     list<string_view> stop_names_;
-    size_t unique_stops_ = 0;
+    unordered_set<string_view> unique_stops_ = {};
     double route_len_ = 0.0;
 
     BusInfo(string_view id, Type type, list<string_view> snames):
@@ -77,6 +78,7 @@ private:
 
     unordered_set<string> bus_names_;
     unordered_set<string> stop_names_;
+    unordered_map<string_view, set<string_view>> stop_to_bus_;
     StopStruct stops_;
     BusStruct buses_;
 
@@ -115,12 +117,12 @@ private:
         }
     }
 
-    size_t CalcUniqueStops(const BusInfo* bus) const {
+    unordered_set<string_view> GetUniqueStops(const BusInfo* bus) const {
         unordered_set<string_view> unique;
         for(const auto& el : bus->stop_names_){
             unique.insert(el);
         }
-        return unique.size();
+        return unique;
     }
 
     void UpdateBusRouteLens(){
@@ -131,10 +133,18 @@ private:
 
     void UpdateBusUniqueStops(){
         for(const auto& name : bus_names_){
-            buses_[name]->unique_stops_ = CalcUniqueStops(buses_[name].get());
+            buses_[name]->unique_stops_ = GetUniqueStops(buses_[name].get());
         }
     }
 
+    void UpdateStopToBus(){
+        for(const auto& bus_pair : buses_){
+            const auto *bus_ptr = bus_pair.second.get();
+            for(const auto& stop_name : bus_ptr->unique_stops_){
+                stop_to_bus_[stop_name].insert(bus_ptr->id_);
+            }
+        }
+    }
 public:
     void AddBusStop(unique_ptr<Stop> new_stop){
         new_stop->name_ = SaveStopName(new_stop->name_);
@@ -151,13 +161,27 @@ public:
         buses_[new_bus->id_] = move(new_bus);
     }
 
-    void UpdateBusInfo(){
+    void UpdateDataBase(){
         UpdateBusRouteLens();
         UpdateBusUniqueStops();
+        UpdateStopToBus();
+    }
+
+
+    optional<set<string_view>> GetBusesForStop(string_view stop_key) const {
+        auto it = stop_to_bus_.find(stop_key);
+        if(it!=stop_to_bus_.end()){
+            return it->second;
+        }
+        return nullopt;
     }
 
     const Stop* GetStop(string_view stop_key) const {
-        return stops_.at(stop_key).get();
+        auto it = stops_.find(stop_key);
+        if (it!=stops_.end()){
+            return it->second.get();
+        }
+        return nullptr;
     }
 
     const BusInfo* GetBus(string_view bus_id) const {
@@ -236,7 +260,7 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream=cin){
             catalog.AddBusStop(move(stop));
         }
     }
-    catalog.UpdateBusInfo();
+    catalog.UpdateDataBase();
 }
 
 
@@ -260,7 +284,7 @@ Request& operator=(const Request& other) = delete;
 
 static RequestHolder Create(Type type);
 virtual void ParseFromString(const BusCatalog& catalog, string_view request) = 0;
-virtual void Reply(ostream& out_stream) = 0;
+virtual void Reply(ostream& out_stream) const = 0;
 };
 
 
@@ -272,6 +296,7 @@ const unordered_map<string_view, Request::Type> STR_TO_REQUEST_TYPE = {
 
 struct BusReply : Request{
     string_view id_ = {};
+    bool found_ = false;
     optional<size_t> num_stops_;
     optional<size_t> unique_stops_;
     optional<double> route_len_;
@@ -288,7 +313,7 @@ struct BusReply : Request{
 
     optional<size_t> GetUniqueStopsNum(const BusInfo* bus){
         if(bus){
-            return bus->unique_stops_;
+            return bus->unique_stops_.size();
         }
         return nullopt;
     }
@@ -303,13 +328,14 @@ struct BusReply : Request{
     void ParseFromString(const BusCatalog& catalog, string_view request) override{
         id_ = DeleteSpaces(request);
         const BusInfo* bus = catalog.GetBus(id_);
+        found_ = bus;
         num_stops_ = GetAllStopsNum(bus);
         unique_stops_ = GetUniqueStopsNum(bus);
         route_len_ = GetRouteLength(bus);
     }
 
-    void Reply(ostream& out_stream) override{
-        if(num_stops_){     //not beautiful way to check.....
+    void Reply(ostream& out_stream) const override{
+        if(found_){
             out_stream << "Bus " << id_ <<": "<< num_stops_.value() << " stops on route, "
                        << unique_stops_.value() << " unique stops, " <<route_len_.value() << " route length\n";
         } else {
@@ -320,7 +346,36 @@ struct BusReply : Request{
 
 
 struct StopReply : Request{
+    bool found_ = false;
+    string_view stop_name_;
+    optional<set<string_view>> buses_;
+
     StopReply(): Request::Request(Request::Type::STOP) {}
+
+    void ParseFromString(const BusCatalog& catalog, string_view request) override{
+        stop_name_ = DeleteSpaces(request);
+        const auto* stop = catalog.GetStop(stop_name_);
+        found_ = stop;
+        buses_ = catalog.GetBusesForStop(stop_name_);
+    }
+
+    void Reply(ostream& out_stream) const override{
+        if(found_){
+            if(buses_){
+                out_stream << "Stop " << stop_name_ << ": buses";
+                for(const auto& el : buses_.value()){
+                    out_stream << " " << el;
+                }
+                out_stream << "\n";
+            }
+            else {
+                out_stream << "Stop " << stop_name_ <<": no buses\n";
+            }
+        }
+        else {
+            out_stream << "Stop " << stop_name_ <<": not found\n";
+        }
+    }
 };
 
 
@@ -332,8 +387,8 @@ RequestHolder Request::Create(Request::Type type){
     switch (type) {
     case Request::Type::BUS:
         return make_unique<BusReply>();
-    //case Request::Type::STOP:
-    //    return make_unique<StopReply>();
+    case Request::Type::STOP:
+        return make_unique<StopReply>();
     default:
         return nullptr;
     }
@@ -357,7 +412,7 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream&
 
 //-------------TESTS------------------------
 
-
+/*
 
 void TestParcingRequest(){
     string_view test = "Stop Tolstopaltsevo: 55.611087, 37.20829";
@@ -455,31 +510,67 @@ void TestBusReply(){
     ss << "Bus 751\n";
     stringstream out;
     ProcessRequests(catalog, ss, out);
-    string reply_1;
-    getline(out, reply_1);
-    string expected_1 = "Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length";
-    ASSERT_EQUAL(expected_1, reply_1);
-    string reply_2;
-    getline(out, reply_2);
-    string expected_2 = "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length";
-    ASSERT_EQUAL(expected_2, reply_2);
-    string reply_3;
-    getline(out, reply_3);
-    string expected_3 = "Bus 751: not found";
-    ASSERT_EQUAL(expected_3, reply_3);
+    vector<string> expected = {"Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length",
+                               "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length",
+                               "Bus 751: not found"};
+    for(size_t i=0; i<expected.size(); i++){
+        string get;
+        getline(out, get);
+        ASSERT_EQUAL(get, expected[i]);
+    }
 }
 
 
+void TestWithStops(){
+    stringstream in;
+    in<<13<<"\n";
+    in << "Stop Tolstopaltsevo: 55.611087, 37.20829\n";
+    in << "Stop Marushkino: 55.595884, 37.209755\n";
+    in << "Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye\n";
+    in << "Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka\n";
+    in << "Stop Rasskazovka: 55.632761, 37.333324\n";
+    in << "Stop Biryulyovo Zapadnoye: 55.574371, 37.6517\n";
+    in << "Stop Biryusinka: 55.581065, 37.64839\n";
+    in << "Stop Universam: 55.587655, 37.645687\n";
+    in << "Stop Biryulyovo Tovarnaya: 55.592028, 37.653656\n";
+    in << "Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164\n";
+    in << "Bus 828: Biryulyovo Zapadnoye > Universam > Rossoshanskaya ulitsa > Biryulyovo Zapadnoye\n";
+    in << "Stop Rossoshanskaya ulitsa: 55.595579, 37.605757\n";
+    in << "Stop Prazhskaya: 55.611678, 37.603831\n";
+    in << "6\n";
+    in << "Bus 256\n";
+    in << "Bus 750\n";
+    in << "Bus 751\n";
+    in << "Stop Samara\n";
+    in << "Stop Prazhskaya\n";
+    in << "Stop Biryulyovo Zapadnoye\n";
+    BusCatalog catalog;
+    ReadInputData(catalog, in);
+    stringstream out;
+    ProcessRequests(catalog, in, out);
+    vector<string> expected = {"Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length",
+                                "Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length",
+                                "Bus 751: not found",
+                                "Stop Samara: not found",
+                                "Stop Prazhskaya: no buses",
+                                "Stop Biryulyovo Zapadnoye: buses 256 828"};
+    for(size_t i=0; i<expected.size(); i++){
+        string get;
+        getline(out,get);
+        ASSERT_EQUAL(get, expected[i]);
+    }
 
-
+}
+*/
 
 
 int main(){
-    TestRunner tr;
-    RUN_TEST(tr, TestParcingRequest);
-    RUN_TEST(tr, TestReadStops);
-    RUN_TEST(tr, TestReadBuses);
-    RUN_TEST(tr, TestBusReply);
+//    TestRunner tr;
+//    RUN_TEST(tr, TestParcingRequest);
+//    RUN_TEST(tr, TestReadStops);
+//    RUN_TEST(tr, TestReadBuses);
+//    RUN_TEST(tr, TestBusReply);
+//    RUN_TEST(tr, TestWithStops);
 
 
     BusCatalog catalog;
