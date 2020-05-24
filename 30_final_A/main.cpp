@@ -13,7 +13,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include "test_runner.h"
+//#include "test_runner.h"
 
 
 using namespace std;
@@ -85,13 +85,13 @@ struct BusInfo{
 
 
 struct PairHasher{
-        hash<string_view> sv_hash;
+    hash<string_view> sv_hash;
 
-        size_t operator()(const pair<string_view, string_view>& el) const {
-            return  2946901*sv_hash(el.first) + sv_hash(el.second);
-        }
+    size_t operator()(const pair<string_view, string_view>& el) const {
+        return  2946901*sv_hash(el.first) + sv_hash(el.second);
+    }
 
-   };
+};
 
 bool operator==(const pair<string_view, string_view>& lhs, const pair<string_view, string_view>& rhs){
     return lhs.first==rhs.first && lhs.second==rhs.second;
@@ -130,9 +130,12 @@ private:
     double ComputeDistance(string_view lhs, string_view rhs) const {
         const Stop *left = stops_.at(lhs).get();
         const Stop *right = stops_.at(rhs).get();
+//        double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
+//                cos(left->latitude_)*cos(right->latitude_)*(sin(left->longitude_)*sin(right->longitude_) +
+//                                                          cos(left->longitude_)*cos(right->longitude_));
         double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
-                cos(left->latitude_)*cos(right->latitude_)*(sin(left->longitude_)*sin(right->longitude_) +
-                                                          cos(left->longitude_)*cos(right->longitude_));
+                           cos(left->latitude_)*cos(right->latitude_) *
+                           cos(abs(left->longitude_ - right->longitude_));
         return R_EARTH*acos(cos_alpha);     //in m
     }
 
@@ -428,8 +431,8 @@ struct BusReply : Request{
     void Reply(ostream& out_stream) const override{
         if(found_){
             out_stream << "Bus " << id_ <<": "<< num_stops_.value() << " stops on route, "
-                       << unique_stops_.value() << " unique stops, " <<route_len_.value() << " route length"
-                       << real_distance_.value()/route_len_.value() << "curvature\n";
+                       << unique_stops_.value() << " unique stops, " <<real_distance_.value() << " route length, "
+                       << real_distance_.value()/route_len_.value() << " curvature\n";
         } else {
             out_stream << "Bus " << id_ <<": not found\n";
         }
@@ -504,7 +507,7 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream=cin, ostream&
 
 //-------------TESTS------------------------
 
-///*
+/*
 
 void TestParcingRequest(){
     string_view test = "Stop Tolstopaltsevo: 55.611087, 37.20829";
@@ -701,12 +704,14 @@ void TestNewFormatStops(){
     BusCatalog catalog;
     ReadInputData(catalog, in);
     stringstream out;
-    vector<string>expected ={"Bus 256: 6 stops on route, 5 unique stops, 5950 route length, 1.361239 curvature\n",
-                  "Bus 750: 5 stops on route, 3 unique stops, 27600 route length, 1.318084 curvature\n",
-                  "Bus 751: not found\n",
-                      "Stop Samara: not found\n",
-                  "Stop Prazhskaya: no buses\n",
-                  "Stop Biryulyovo Zapadnoye: buses 256 828\n"};
+    out<<setprecision(7);
+    ProcessRequests(catalog, in, out);
+    vector<string>expected ={"Bus 256: 6 stops on route, 5 unique stops, 5950 route length, 1.361239 curvature",
+                  "Bus 750: 5 stops on route, 3 unique stops, 27600 route length, 1.318084 curvature",
+                  "Bus 751: not found",
+                      "Stop Samara: not found",
+                  "Stop Prazhskaya: no buses",
+                  "Stop Biryulyovo Zapadnoye: buses 256 828"};
     for(size_t i=0; i<expected.size(); i++){
         string got;
         getline(out, got);
@@ -715,18 +720,18 @@ void TestNewFormatStops(){
 
 }
 
-//*/
+*/
 
 
 int main(){
-    TestRunner tr;
-    RUN_TEST(tr, TestParcingRequest);
-    RUN_TEST(tr, TestReadStops);
+//    TestRunner tr;
+//    RUN_TEST(tr, TestParcingRequest);
+//    RUN_TEST(tr, TestReadStops);
 //    RUN_TEST(tr, TestReadBuses);
 //    RUN_TEST(tr, TestBusReply);
 //    RUN_TEST(tr, TestWithStops);
-    RUN_TEST(tr, TestSavingExtraStops);
-    RUN_TEST(tr, TestNewFormatStops);
+//    RUN_TEST(tr, TestSavingExtraStops);
+//    RUN_TEST(tr, TestNewFormatStops);
 
 
     BusCatalog catalog;
