@@ -1,0 +1,137 @@
+{
+  "base_requests": [
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Marushkino": 3900
+      },
+      "name": "Tolstopaltsevo",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Rasskazovka": 9900
+      },
+      "name": "Marushkino",
+    },
+    {
+      "type": "Bus",
+      "name": "256",
+      "stops": [
+        "Biryulyovo Zapadnoye",
+        "Biryusinka",
+        "Universam",
+        "Biryulyovo Tovarnaya",
+        "Biryulyovo Passazhirskaya",
+        "Biryulyovo Zapadnoye"
+      ],
+      "is_roundtrip": true
+    },
+    {
+      "type": "Bus",
+      "name": "750",
+      "stops": [
+        "Tolstopaltsevo",
+        "Marushkino",
+        "Rasskazovka"
+      ],
+      "is_roundtrip": false
+    },
+    {
+      "type": "Stop",
+      "road_distances": {},
+      "name": "Rasskazovka",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Rossoshanskaya ulitsa": 7500,
+        "Biryusinka": 1800,
+        "Universam": 2400
+      },
+      "name": "Biryulyovo Zapadnoye",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Universam": 750
+      },
+      "name": "Biryusinka",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Rossoshanskaya ulitsa": 5600,
+        "Biryulyovo Tovarnaya": 900
+      },
+      "name": "Universam",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Biryulyovo Passazhirskaya": 1300
+      },
+      "name": "Biryulyovo Tovarnaya",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {
+        "Biryulyovo Zapadnoye": 1200
+      },
+      "name": "Biryulyovo Passazhirskaya",
+    },
+    {
+      "type": "Bus",
+      "name": "828",
+      "stops": [
+        "Biryulyovo Zapadnoye",
+        "Universam",
+        "Rossoshanskaya ulitsa",
+        "Biryulyovo Zapadnoye"
+      ],
+      "is_roundtrip": true
+    },
+    {
+      "type": "Stop",
+      "road_distances": {},
+      "name": "Rossoshanskaya ulitsa",
+    },
+    {
+      "type": "Stop",
+      "road_distances": {},
+      "name": "Prazhskaya",
+    }
+  ],
+  "stat_requests": [
+    {
+      "type": "Bus",
+      "name": "256",
+      "id": 1965312327
+    },
+    {
+      "type": "Bus",
+      "name": "750",
+      "id": 519139350
+    },
+    {
+      "type": "Bus",
+      "name": "751",
+      "id": 194217464
+    },
+    {
+      "type": "Stop",
+      "name": "Samara",
+      "id": 746888088
+    },
+    {
+      "type": "Stop",
+      "name": "Prazhskaya",
+      "id": 65100610
+    },
+    {
+      "type": "Stop",
+      "name": "Biryulyovo Zapadnoye",
+      "id": 1042838872
+    }
+  ]
+}
