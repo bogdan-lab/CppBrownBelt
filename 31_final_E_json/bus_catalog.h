@@ -13,6 +13,8 @@
 #include <vector>
 #include <iostream>
 
+#include "json.h"
+
 using RealDistance = std::pair<std::string_view, size_t>;
 
 std::ostream& operator<<(std::ostream& out, const RealDistance& el);
@@ -96,6 +98,8 @@ public:
 };
 
 void ReadInputData(BusCatalog& catalog, std::istream& in_stream=std::cin);
+void ReadInputData(BusCatalog& catalog, const std::vector<Json::Node>& base_requests);
 void ProcessRequests(const BusCatalog& catalog, std::istream& in_stream=std::cin, std::ostream& out_stream=std::cout);
+void ProcessRequests(const BusCatalog& catalog, const std::vector<Json::Node>& stat_requests, std::ostream& out_stream=std::cout);
 
 #endif

@@ -12,6 +12,7 @@
 #include <unordered_map>
 
 #include "bus_catalog.h"
+#include "json.h"
 
 
 namespace Request {
@@ -30,7 +31,8 @@ struct InputRequest{
     InputRequest(Type type);
     virtual ~InputRequest() = default;
     static InputRequestHolder Create(Type type);
-    virtual void ParseFromString(std::string_view s) = 0;
+    virtual void ParseFrom(std::string_view s) = 0;
+    virtual void ParseFrom(const std::map<std::string, Json::Node>& node) = 0;
     virtual void Process(BusCatalog& catalog) const = 0;
     Type type_;
 };
@@ -49,7 +51,8 @@ struct InputStop : InputRequest{
     std::vector<RealDistance> distances_;
 
     InputStop();
-    void ParseFromString(std::string_view request) override;
+    void ParseFrom(std::string_view request) override;
+    virtual void ParseFrom(const std::map<std::string, Json::Node>& node) override;
     void Process(BusCatalog& catalog) const override;
 };
 
@@ -64,7 +67,8 @@ struct InputBus : InputRequest{
     InputBus();
     BusInfo::Type GetBusType(std::string_view s);
     std::list<std::string_view> ReadBusStops(std::string_view request, std::string_view splitter);
-    void ParseFromString(std::string_view request) override ;
+    void ParseFrom(std::string_view request) override ;
+    virtual void ParseFrom(const std::map<std::string, Json::Node>& node) override;
     void Process(BusCatalog& catalog) const override ;
 };
 
@@ -81,7 +85,8 @@ struct ReplyRequest{
     ReplyRequest(const ReplyRequest& other) = delete;
     ReplyRequest& operator=(const ReplyRequest& other) = delete;
     static ReplyRequestHolder Create(Type type);
-    virtual void ParseFromString(const BusCatalog& catalog, std::string_view request) = 0;
+    virtual void ParseFrom(const BusCatalog& catalog, std::string_view request) = 0;
+    virtual void ParseFrom(const BusCatalog& catalog, const std::map<std::string, Json::Node>& request) = 0;
     virtual void Reply(std::ostream& out_stream) const = 0;
 };
 
@@ -93,7 +98,8 @@ const std::unordered_map<std::string_view, ReplyRequest::Type> STR_TO_REQUEST_TY
 
 
 struct BusReply : ReplyRequest{
-    std::string_view id_ = {};
+    std::string_view name_ = {};
+    int id_ = 0;
     bool found_ = false;
     std::optional<size_t> num_stops_;
     std::optional<size_t> unique_stops_;
@@ -105,19 +111,21 @@ struct BusReply : ReplyRequest{
     std::optional<size_t> GetUniqueStopsNum(const BusInfo* bus);
     std::optional<double> GetRouteLength(const BusInfo* bus);
     std::optional<size_t> GetRealDistance(const BusInfo* bus);
-    void ParseFromString(const BusCatalog& catalog, std::string_view request) override;
+    void ParseFrom(const BusCatalog& catalog, std::string_view request) override;
+    void ParseFrom(const BusCatalog& catalog, const std::map<std::string, Json::Node>& request) override;
     void Reply(std::ostream& out_stream) const override;
 };
 
 struct StopReply : ReplyRequest{
     bool found_ = false;
+    int id_;
     std::string_view stop_name_;
     std::optional<std::set<std::string_view>> buses_;
 
     StopReply();
 
-    void ParseFromString(const BusCatalog& catalog, std::string_view request) override;
-
+    void ParseFrom(const BusCatalog& catalog, std::string_view request) override;
+    void ParseFrom(const BusCatalog& catalog, const std::map<std::string, Json::Node>& request) override;
     void Reply(std::ostream& out_stream) const override;
 };
 

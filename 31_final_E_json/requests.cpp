@@ -10,18 +10,20 @@
 #include "requests.h"
 #include "bus_catalog.h"
 #include "utils.h"
+#include "json.h"
 
 using namespace std;
 
 
 namespace Request{
 using namespace Utils;
+using namespace Json;
 
 InputRequest::InputRequest(Type type): type_(type) {}
 
 InputStop::InputStop(): InputRequest::InputRequest(InputRequest::Type::STOP) {}
 
-void InputStop::ParseFromString(string_view request) {
+void InputStop::ParseFrom(string_view request) {
     stop_name_ = GetUntilSplitter(request, ":");
     latitude_ = ConvertToDouble(GetUntilSplitter(request, ","));
     longitude_ = ConvertToDouble(GetUntilSplitter(request, ","));
@@ -31,6 +33,20 @@ void InputStop::ParseFromString(string_view request) {
         string_view other_stop = GetUntilSplitter(request, ",");
         distances_.push_back(make_pair(other_stop, dist));
     }
+}
+
+void InputStop::ParseFrom(const map<string, Node>& request){
+    stop_name_ = request.at("name").AsString();
+    latitude_ = request.at("latitude").AsDouble();
+    longitude_ = request.at("longitude").AsDouble();
+    map<string, Node> given_distances = request.at("road_distances").AsMap();
+    distances_.reserve(given_distances.size());
+    for(const auto& el : given_distances){
+        string_view station = el.first;
+        size_t dist = el.second.AsInt();
+        distances_.push_back(make_pair(station, dist));
+    }
+
 }
 
 void InputStop::Process(BusCatalog& catalog) const {
@@ -57,10 +73,20 @@ list<string_view> InputBus::ReadBusStops(string_view request, string_view splitt
     return stop_names;
 }
 
-void InputBus::ParseFromString(string_view request) {
+void InputBus::ParseFrom(string_view request) {
     id_ = GetUntilSplitter(request, ":");
     type_ = GetBusType(request);
     stop_names_ = ReadBusStops(request, SPLITTER_FOR.at(type_));
+    if(type_==BusInfo::Type::ROUND){stop_names_.pop_back();}
+}
+
+void InputBus::ParseFrom(const map<string, Node>& request) {
+    id_ = request.at("name").AsString();
+    type_ = request.at("is_roundtrip").AsBool() ? BusInfo::Type::ROUND : BusInfo::Type::STRAIGHT ;
+    vector<Node> given_stops = request.at("stops").AsArray();
+    for(const auto& el : given_stops){
+        stop_names_.push_back(el.AsString());
+    }
     if(type_==BusInfo::Type::ROUND){stop_names_.pop_back();}
 }
 
@@ -117,9 +143,20 @@ InputRequestHolder InputRequest::Create(Type type){
         return nullopt;
     }
 
-    void BusReply::ParseFromString(const BusCatalog& catalog, string_view request) {
-        id_ = DeleteSpaces(request);
-        const BusInfo* bus = catalog.GetBus(id_);
+    void BusReply::ParseFrom(const BusCatalog& catalog, string_view request) {
+        name_ = DeleteSpaces(request);
+        const BusInfo* bus = catalog.GetBus(name_);
+        found_ = bus;
+        num_stops_ = GetAllStopsNum(bus);
+        unique_stops_ = GetUniqueStopsNum(bus);
+        route_len_ = GetRouteLength(bus);
+        real_distance_ = GetRealDistance(bus);
+    }
+
+    void BusReply::ParseFrom(const BusCatalog &catalog, const std::map<string, Node> &request){
+        name_ = request.at("name").AsString();
+        id_ = request.at("id").AsInt();
+        const BusInfo* bus = catalog.GetBus(name_);
         found_ = bus;
         num_stops_ = GetAllStopsNum(bus);
         unique_stops_ = GetUniqueStopsNum(bus);
@@ -129,18 +166,26 @@ InputRequestHolder InputRequest::Create(Type type){
 
     void BusReply::Reply(ostream& out_stream) const {
         if(found_){
-            out_stream << "Bus " << id_ <<": "<< num_stops_.value() << " stops on route, "
+            out_stream << "Bus " << name_ <<": "<< num_stops_.value() << " stops on route, "
                        << unique_stops_.value() << " unique stops, " <<real_distance_.value() << " route length, "
                        << real_distance_.value()/route_len_.value() << " curvature\n";
         } else {
-            out_stream << "Bus " << id_ <<": not found\n";
+            out_stream << "Bus " << name_ <<": not found\n";
         }
     }
 
    StopReply::StopReply(): ReplyRequest::ReplyRequest(ReplyRequest::Type::STOP) {}
 
-    void StopReply::ParseFromString(const BusCatalog& catalog, string_view request) {
+    void StopReply::ParseFrom(const BusCatalog& catalog, string_view request) {
         stop_name_ = DeleteSpaces(request);
+        const auto* stop = catalog.GetStop(stop_name_);
+        found_ = stop;
+        buses_ = catalog.GetBusesForStop(stop_name_);
+    }
+
+    void StopReply::ParseFrom(const BusCatalog &catalog, const std::map<string, Node> &request){
+        stop_name_ = request.at("name").AsString();
+        id_ = request.at("id").AsInt();
         const auto* stop = catalog.GetStop(stop_name_);
         found_ = stop;
         buses_ = catalog.GetBusesForStop(stop_name_);

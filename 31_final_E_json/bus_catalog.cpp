@@ -207,11 +207,27 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream){
         string_view input_name = GetUntilSplitter(request_view, " ");
         InputRequest::Type input_type = STR_TO_INPUT_TYPE.at(input_name);
         InputRequestHolder input = InputRequest::Create(input_type);
-        input->ParseFromString(request_view);
+        input->ParseFrom(request_view);
         input->Process(catalog);
     }
     catalog.UpdateDataBase();
 }
+
+void ReadInputData(BusCatalog &catalog, const std::vector<Json::Node> &base_requests){
+    using namespace Request;
+    using namespace Json;
+    for(const auto& el : base_requests){
+        map<string, Node> request = el.AsMap();
+        string_view input_name = request.at("type").AsString();
+        InputRequest::Type input_type = STR_TO_INPUT_TYPE.at(input_name);
+        InputRequestHolder input = InputRequest::Create(input_type);
+        input->ParseFrom(request);
+        input->Process(catalog);
+    }
+    catalog.UpdateDataBase();
+}
+
+
 
 void ProcessRequests(const BusCatalog& catalog, istream& in_stream, ostream& out_stream){
     using namespace Utils;
@@ -224,9 +240,20 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream, ostream& out
         string_view request_name = GetUntilSplitter(request_view, " ");
         ReplyRequest::Type type = STR_TO_REQUEST_TYPE.at(request_name);
         ReplyRequestHolder res = ReplyRequest::Create(type);
-        res->ParseFromString(catalog, request_view);
+        res->ParseFrom(catalog, request_view);
         res->Reply(out_stream);
     }
 }
 
-
+void ProcessRequests(const BusCatalog &catalog, const std::vector<Json::Node> &stat_requests, ostream &out_stream){
+    using namespace Request;
+    using namespace Json;
+    for(const auto& el : stat_requests){
+        map<string, Node> request = el.AsMap();
+        string_view request_name = request.at("type").AsString();
+        ReplyRequest::Type type = STR_TO_REQUEST_TYPE.at(request_name);
+        ReplyRequestHolder res = ReplyRequest::Create(type);
+        res->ParseFrom(catalog, request);
+        res->Reply(out_stream);
+    }
+}
