@@ -5,7 +5,9 @@
       "road_distances": {
         "Marushkino": 3900
       },
-      "name": "Tolstopaltsevo"
+      "name": "Tolstopaltsevo",
+      "longitude": 37.20829,
+      "latitude": 55.611087
     },	
     {
       "type": "Bus",
@@ -23,7 +25,9 @@
     {
       "type": "Stop",
       "road_distances": {},
-      "name": "Rasskazovka"
+      "name": "Rasskazovka",
+      "longitude": 37
+      "latitude": 55
     },
     {
       "type": "Bus",

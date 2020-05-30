@@ -24,14 +24,11 @@ namespace Json {
     return Node(move(result));
   }
 
-  Node LoadInt(istream& input) {
-    int result = 0;
-    while (isdigit(input.peek())) {
-      result *= 10;
-      result += input.get() - '0';
-    }
-    return Node(result);
-  }
+  Node LoadNum(istream& input) {
+    string line;
+    getline(input, line);
+    return Node(stod(line));
+   }
 
   Node LoadString(istream& input) {
     string line;
@@ -78,7 +75,7 @@ namespace Json {
       return LoadString(input);
     } else if (isdigit(c)) {
       input.putback(c);
-      return LoadInt(input);
+      return LoadNum(input);
     }
     else {
         input.putback(c);

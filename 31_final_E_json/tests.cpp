@@ -111,6 +111,9 @@ void TestJsonRead(){
     map<string, Node> req_0_roads = req_0.at("road_distances").AsMap();
     ASSERT_EQUAL(req_0_roads.size(), 1);
     ASSERT_EQUAL(req_0_roads.at("Marushkino").AsInt(), 3900);
+    ASSERT_EQUAL(req_0.at("longitude").AsDouble(), 37.20829);
+    ASSERT_EQUAL(req_0.at("latitude").AsDouble(), 55.611087);
+
 
     map<string, Node> req_1 = base_requests[1].AsMap();
     ASSERT_EQUAL(req_1.at("type").AsString(), "Bus");
@@ -120,11 +123,13 @@ void TestJsonRead(){
     ASSERT_EQUAL(stops.size(), 6);
     ASSERT_EQUAL(stops[0].AsString(), "Biryulyovo Zapadnoye");
 
-
     map<string, Node> req_2 = base_requests[2].AsMap();
     ASSERT_EQUAL(req_2.at("type").AsString(), "Stop");
     ASSERT_EQUAL(req_2.at("road_distances").AsMap().empty(), true);
     ASSERT_EQUAL(req_2.at("name").AsString(), "Rasskazovka");
+    ASSERT_EQUAL(req_2.at("longitude").AsDouble(), 37);
+    ASSERT_EQUAL(req_2.at("latitude").AsDouble(), 55);
+
 
     map<string, Node> req_3 = base_requests[3].AsMap();
     ASSERT_EQUAL(req_3.at("is_roundtrip").AsBool(), false);
@@ -138,7 +143,6 @@ void RunTests(){
     RUN_TEST(tr, TestSavingExtraStops);
     RUN_TEST(tr, TestNewFormatStops);
     RUN_TEST(tr, TestJsonRead);
-    //TestJson();
 
 }
 

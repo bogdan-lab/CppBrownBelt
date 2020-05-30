@@ -10,7 +10,7 @@ namespace Json {
 
   class Node : std::variant<std::vector<Node>,
                             std::map<std::string, Node>,
-                            int,
+                            double,
                             bool,
                             std::string> {
   public:
@@ -23,7 +23,10 @@ namespace Json {
       return std::get<std::map<std::string, Node>>(*this);
     }
     int AsInt() const {
-      return std::get<int>(*this);
+      return static_cast<int>(this->AsDouble());
+    }
+    double AsDouble() const {
+        return std::get<double>(*this);
     }
     const auto& AsString() const {
       return std::get<std::string>(*this);
@@ -45,7 +48,7 @@ namespace Json {
 
   Node LoadNode(std::istream& input);
   Node LoadArray(std::istream& input);
-  Node LoadInt(std::istream& input);
+  Node LoadNum(std::istream& input);
   Node LoadString(std::istream& input);
   Node LoadDict(std::istream& input);
   Node LoadBool(std::istream& input);
