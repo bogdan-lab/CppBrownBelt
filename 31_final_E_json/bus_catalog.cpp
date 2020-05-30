@@ -13,7 +13,6 @@
 
 
 #include "bus_catalog.h"
-#include "utils.h"
 #include "requests.h"
 
 using namespace std;
@@ -25,38 +24,38 @@ ostream& operator<<(ostream& out, const RealDistance& el){
 }
 
 
-Stop::Stop(string_view n, double lat, double lon, vector<RealDistance> dist):
+Stop::Stop(string n, double lat, double lon, vector<RealDistance> dist):
     name_(move(n)), latitude_(move(lat)), longitude_(move(lon)), distances_(move(dist)){}
 
 
 
-BusInfo::BusInfo(string_view id, Type type, list<string_view> snames):
+BusInfo::BusInfo(string id, Type type, vector<string> snames):
     id_(id), type_(type), stop_names_(move(snames)) {}
 
 
 
-size_t PairHasher::operator()(const pair<string_view, string_view>& el) const {
+size_t PairHasher::operator()(const pair<string, string>& el) const {
     return  2946901*sv_hash(el.first) + sv_hash(el.second);
 }
 
 
-bool operator==(const pair<string_view, string_view>& lhs, const pair<string_view, string_view>& rhs){
+bool operator==(const pair<string, string>& lhs, const pair<string, string>& rhs){
     return lhs.first==rhs.first && lhs.second==rhs.second;
 }
 
 
 
-string_view BusCatalog::SaveStopName(string_view new_stop_name){
+string BusCatalog::SaveStopName(string new_stop_name){
     auto res = stop_names_.insert(string(new_stop_name));
     return *(res.first);
 }
 
-string_view BusCatalog::SaveBusName(string_view new_bus_name){
+string BusCatalog::SaveBusName(string new_bus_name){
     auto res = bus_names_.insert(string(new_bus_name));
     return *(res.first);
 }
 
-double BusCatalog::ComputeDistance(string_view lhs, string_view rhs) const {
+double BusCatalog::ComputeDistance(string lhs, string rhs) const {
     const Stop *left = stops_.at(lhs).get();
     const Stop *right = stops_.at(rhs).get();
     double cos_alpha = sin(left->latitude_)*sin(right->latitude_) +
@@ -91,7 +90,7 @@ int BusCatalog::ComputeBusRealDist(const BusInfo* bus) const {
     }
     if(bus->type_==BusInfo::Type::STRAIGHT){
         //go backward
-        for(auto it = prev(bus->stop_names_.end()); it!=next(bus->stop_names_.end()); it--){
+        for(auto it = prev(bus->stop_names_.end()); it!=bus->stop_names_.begin(); it--){
             auto start = it;
             auto end = prev(it);
             auto interval = make_pair(*start, *end);
@@ -105,8 +104,8 @@ int BusCatalog::ComputeBusRealDist(const BusInfo* bus) const {
     return length;
 }
 
-unordered_set<string_view> BusCatalog::GetUniqueStops(const BusInfo* bus) const {
-    unordered_set<string_view> unique;
+unordered_set<string> BusCatalog::GetUniqueStops(const BusInfo* bus) const {
+    unordered_set<string> unique;
     for(const auto& el : bus->stop_names_){
         unique.insert(el);
     }
@@ -135,7 +134,7 @@ void BusCatalog::UpdateStopToBus(){
     }
 }
 
-void BusCatalog::AddRealDistance(string_view start, RealDistance& new_dist){
+void BusCatalog::AddRealDistance(string start, RealDistance& new_dist){
     new_dist.first = SaveStopName(new_dist.first);
     auto fact = make_pair(start, new_dist.first);
     all_distances_[fact] = new_dist.second;
@@ -168,15 +167,15 @@ void BusCatalog::UpdateDataBase(){
 }
 
 
-optional<set<string_view>> BusCatalog::GetBusesForStop(string_view stop_key) const {
+std::set<string> BusCatalog::GetBusesForStop(string stop_key) const {
     auto it = stop_to_bus_.find(stop_key);
     if(it!=stop_to_bus_.end()){
         return it->second;
     }
-    return nullopt;
+    return {};
 }
 
-const Stop* BusCatalog::GetStop(string_view stop_key) const {
+const Stop* BusCatalog::GetStop(string stop_key) const {
     auto it = stops_.find(stop_key);
     if (it!=stops_.end()){
         return it->second.get();
@@ -184,7 +183,7 @@ const Stop* BusCatalog::GetStop(string_view stop_key) const {
     return nullptr;
 }
 
-const BusInfo* BusCatalog::GetBus(string_view bus_id) const {
+const BusInfo* BusCatalog::GetBus(string bus_id) const {
     auto it = buses_.find(bus_id);
     if (it!=buses_.end()){
         return it->second.get();
@@ -196,30 +195,13 @@ int BusCatalog::GetDistStructSize() const {
     return all_distances_.size();
 }
 
-void ReadInputData(BusCatalog& catalog, istream& in_stream){
-    using namespace Utils;
-    using namespace Request;
-    size_t request_count = ReadRequestCount(in_stream);
-    for (size_t i=0; i< request_count; i++){
-        string request_line;
-        getline(in_stream, request_line);
-        string_view request_view = string_view(request_line);
-        string_view input_name = GetUntilSplitter(request_view, " ");
-        InputRequest::Type input_type = STR_TO_INPUT_TYPE.at(input_name);
-        InputRequestHolder input = InputRequest::Create(input_type);
-        input->ParseFrom(request_view);
-        input->Process(catalog);
-    }
-    catalog.UpdateDataBase();
-}
-
 void ReadInputData(BusCatalog &catalog, const std::vector<Json::Node> &base_requests){
     using namespace Request;
     using namespace Json;
     int idx = 0;
     for(const auto& el : base_requests){
         map<string, Node> request = el.AsMap();
-        string_view input_name = request.at("type").AsString();
+        string input_name = request.at("type").AsString();
         InputRequest::Type input_type = STR_TO_INPUT_TYPE.at(input_name);
         InputRequestHolder input = InputRequest::Create(input_type);
         input->ParseFrom(request);
@@ -229,24 +211,6 @@ void ReadInputData(BusCatalog &catalog, const std::vector<Json::Node> &base_requ
     catalog.UpdateDataBase();
 }
 
-
-
-void ProcessRequests(const BusCatalog& catalog, istream& in_stream, ostream& out_stream){
-    using namespace Utils;
-    using namespace Request;
-    size_t request_count = ReadRequestCount(in_stream);
-    for(size_t i=0; i<request_count; i++){
-        string request_line;
-        getline(in_stream, request_line);
-        string_view request_view = string_view(request_line);
-        string_view request_name = GetUntilSplitter(request_view, " ");
-        ReplyRequest::Type type = STR_TO_REQUEST_TYPE.at(request_name);
-        ReplyRequestHolder res = ReplyRequest::Create(type);
-        res->ParseFrom(catalog, request_view);
-        res->Reply(out_stream);
-    }
-}
-
 void ProcessRequests(const BusCatalog &catalog, const std::vector<Json::Node> &stat_requests, ostream &out_stream){
     using namespace Request;
     using namespace Json;
@@ -254,7 +218,7 @@ void ProcessRequests(const BusCatalog &catalog, const std::vector<Json::Node> &s
     replies.reserve(stat_requests.size());
     for(const auto& el : stat_requests){
         map<string, Node> request = el.AsMap();
-        string_view request_name = request.at("type").AsString();
+        string request_name = request.at("type").AsString();
         ReplyRequest::Type type = STR_TO_REQUEST_TYPE.at(request_name);
         ReplyRequestHolder res = ReplyRequest::Create(type);
         res->ParseFrom(catalog, request);

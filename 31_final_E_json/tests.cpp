@@ -4,7 +4,6 @@
 #include "tests.h"
 #include "test_runner.h"
 #include "bus_catalog.h"
-#include "utils.h"
 #include "requests.h"
 #include "json.h"
 
@@ -12,58 +11,6 @@
 
 using namespace std;
 
-
-void TestSavingExtraStops(){
-    stringstream in;
-    in << 1 <<"\n";
-    in << "Stop Fancy: 1, 2, 10m to N1, 20m to N2, 30m to N3\n";
-    BusCatalog bc;
-    ReadInputData(bc, in);
-    ASSERT_EQUAL(6, bc.GetDistStructSize());
-}
-
-
-void TestNewFormatStops(){
-    stringstream in;
-    in <<"13\n";
-    in <<"Stop Tolstopaltsevo: 55.611087, 37.20829, 3900m to Marushkino\n";
-    in <<"Stop Marushkino: 55.595884, 37.209755, 9900m to Rasskazovka\n";
-    in <<"Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye\n";
-    in <<"Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka\n";
-    in <<"Stop Rasskazovka: 55.632761, 37.333324\n";
-    in <<"Stop Biryulyovo Zapadnoye: 55.574371, 37.6517, 7500m to Rossoshanskaya ulitsa, 1800m to Biryusinka, 2400m to Universam\n";
-    in <<"Stop Biryusinka: 55.581065, 37.64839, 750m to Universam\n";
-    in <<"Stop Universam: 55.587655, 37.645687, 5600m to Rossoshanskaya ulitsa, 900m to Biryulyovo Tovarnaya\n";
-    in <<"Stop Biryulyovo Tovarnaya: 55.592028, 37.653656, 1300m to Biryulyovo Passazhirskaya\n";
-    in <<"Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164, 1200m to Biryulyovo Zapadnoye\n";
-    in <<"Bus 828: Biryulyovo Zapadnoye > Universam > Rossoshanskaya ulitsa > Biryulyovo Zapadnoye\n";
-    in <<"Stop Rossoshanskaya ulitsa: 55.595579, 37.605757\n";
-    in <<"Stop Prazhskaya: 55.611678, 37.603831\n";
-    in <<"6\n";
-    in <<"Bus 256\n";
-    in <<"Bus 750\n";
-    in <<"Bus 751\n";
-    in <<"Stop Samara\n";
-    in <<"Stop Prazhskaya\n";
-    in <<"Stop Biryulyovo Zapadnoye\n";
-    BusCatalog catalog;
-    ReadInputData(catalog, in);
-    stringstream out;
-    out<<setprecision(7);
-    ProcessRequests(catalog, in, out);
-    vector<string>expected ={"Bus 256: 6 stops on route, 5 unique stops, 5950 route length, 1.361239 curvature",
-                  "Bus 750: 5 stops on route, 3 unique stops, 27600 route length, 1.318084 curvature",
-                  "Bus 751: not found",
-                      "Stop Samara: not found",
-                  "Stop Prazhskaya: no buses",
-                  "Stop Biryulyovo Zapadnoye: buses 256 828"};
-    for(size_t i=0; i<expected.size(); i++){
-        string got;
-        getline(out, got);
-        ASSERT_EQUAL(expected[i], got);
-    }
-
-}
 
 
 void TestJsonRead(){
@@ -125,8 +72,6 @@ void TestJsonRead(){
 void RunTests(){
 
     TestRunner tr;
-    RUN_TEST(tr, TestSavingExtraStops);
-    RUN_TEST(tr, TestNewFormatStops);
     RUN_TEST(tr, TestJsonRead);
 
 }

@@ -17,7 +17,6 @@
 #include "tests.h"
 #include "json.h"
 #include "bus_catalog.h"
-#include "utils.h"
 #include "requests.h"
 
 
@@ -38,8 +37,8 @@ int main(){
 
     map<string, Json::Node> all_requests = doc.GetRoot().AsMap();
     ReadInputData(catalog, all_requests.at("base_requests").AsArray());
-//    cout << setprecision(6);
-//    ProcessRequests(catalog, all_requests.at("stat_requests").AsArray());
+    cout << setprecision(6);
+    ProcessRequests(catalog, all_requests.at("stat_requests").AsArray());
 
     return 0;
 }
