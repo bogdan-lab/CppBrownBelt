@@ -11,6 +11,7 @@ namespace Json {
   class Node : std::variant<std::vector<Node>,
                             std::map<std::string, Node>,
                             int,
+                            bool,
                             std::string> {
   public:
     using variant::variant;
@@ -27,6 +28,9 @@ namespace Json {
     const auto& AsString() const {
       return std::get<std::string>(*this);
     }
+    const auto& AsBool() const{
+        return std::get<bool>(*this);
+    }
   };
 
   class Document {
@@ -39,6 +43,12 @@ namespace Json {
     Node root;
   };
 
+  Node LoadNode(std::istream& input);
+  Node LoadArray(std::istream& input);
+  Node LoadInt(std::istream& input);
+  Node LoadString(std::istream& input);
+  Node LoadDict(std::istream& input);
+  Node LoadBool(std::istream& input);
   Document Load(std::istream& input);
 
 }

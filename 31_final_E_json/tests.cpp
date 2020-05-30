@@ -85,11 +85,50 @@ void TestJson(){
     vector<Node> input_requests = all_requests.at("base_requests").AsArray();
     for(size_t i=0; i<input_requests.size(); i++){
         map<string, Node> this_request = input_requests[i].AsMap();
+        if(this_request.at("type").AsString() == "Bus"){
+            cout << "IS_ROUND_TRIP = "
+                 << this_request.at("is_roundtrip").AsBool()
+                 << endl;
+        }
         cout << "TYPE -> " << this_request.at("type").AsString() << endl;
     }
     cout << "READ FILE OK\n";
 }
 
+
+void TestJsonRead(){
+    using namespace Json;
+    ifstream inFile;
+    inFile.open("./read_test");
+    Document doc = Load(inFile);
+    inFile.close();
+    map<string, Node> all_requests = doc.GetRoot().AsMap();
+    vector<Node> base_requests = all_requests.at("base_requests").AsArray();
+    ASSERT_EQUAL(base_requests.size(), 4);
+    map<string, Node> req_0 = base_requests[0].AsMap();
+    ASSERT_EQUAL(req_0.at("type").AsString(), "Stop");
+    ASSERT_EQUAL(req_0.at("name").AsString(), "Tolstopaltsevo");
+    map<string, Node> req_0_roads = req_0.at("road_distances").AsMap();
+    ASSERT_EQUAL(req_0_roads.size(), 1);
+    ASSERT_EQUAL(req_0_roads.at("Marushkino").AsInt(), 3900);
+
+    map<string, Node> req_1 = base_requests[1].AsMap();
+    ASSERT_EQUAL(req_1.at("type").AsString(), "Bus");
+    ASSERT_EQUAL(req_1.at("name").AsString(), "256");
+    ASSERT_EQUAL(req_1.at("is_roundtrip").AsBool(), true);
+    vector<Node> stops = req_1.at("stops").AsArray();
+    ASSERT_EQUAL(stops.size(), 6);
+    ASSERT_EQUAL(stops[0].AsString(), "Biryulyovo Zapadnoye");
+
+
+    map<string, Node> req_2 = base_requests[2].AsMap();
+    ASSERT_EQUAL(req_2.at("type").AsString(), "Stop");
+    ASSERT_EQUAL(req_2.at("road_distances").AsMap().empty(), true);
+    ASSERT_EQUAL(req_2.at("name").AsString(), "Rasskazovka");
+
+    map<string, Node> req_3 = base_requests[3].AsMap();
+    ASSERT_EQUAL(req_3.at("is_roundtrip").AsBool(), false);
+}
 
 
 
@@ -98,6 +137,7 @@ void RunTests(){
     TestRunner tr;
     RUN_TEST(tr, TestSavingExtraStops);
     RUN_TEST(tr, TestNewFormatStops);
+    RUN_TEST(tr, TestJsonRead);
     //TestJson();
 
 }

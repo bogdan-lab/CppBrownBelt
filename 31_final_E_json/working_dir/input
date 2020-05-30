@@ -5,14 +5,14 @@
       "road_distances": {
         "Marushkino": 3900
       },
-      "name": "Tolstopaltsevo",
+      "name": "Tolstopaltsevo"
     },
     {
       "type": "Stop",
       "road_distances": {
         "Rasskazovka": 9900
       },
-      "name": "Marushkino",
+      "name": "Marushkino"
     },
     {
       "type": "Bus",
@@ -40,7 +40,7 @@
     {
       "type": "Stop",
       "road_distances": {},
-      "name": "Rasskazovka",
+      "name": "Rasskazovka"
     },
     {
       "type": "Stop",
@@ -49,14 +49,14 @@
         "Biryusinka": 1800,
         "Universam": 2400
       },
-      "name": "Biryulyovo Zapadnoye",
+      "name": "Biryulyovo Zapadnoye"
     },
     {
       "type": "Stop",
       "road_distances": {
         "Universam": 750
       },
-      "name": "Biryusinka",
+      "name": "Biryusinka"
     },
     {
       "type": "Stop",
@@ -64,21 +64,21 @@
         "Rossoshanskaya ulitsa": 5600,
         "Biryulyovo Tovarnaya": 900
       },
-      "name": "Universam",
+      "name": "Universam"
     },
     {
       "type": "Stop",
       "road_distances": {
         "Biryulyovo Passazhirskaya": 1300
       },
-      "name": "Biryulyovo Tovarnaya",
+      "name": "Biryulyovo Tovarnaya"
     },
     {
       "type": "Stop",
       "road_distances": {
         "Biryulyovo Zapadnoye": 1200
       },
-      "name": "Biryulyovo Passazhirskaya",
+      "name": "Biryulyovo Passazhirskaya"
     },
     {
       "type": "Bus",
@@ -94,12 +94,12 @@
     {
       "type": "Stop",
       "road_distances": {},
-      "name": "Rossoshanskaya ulitsa",
+      "name": "Rossoshanskaya ulitsa"
     },
     {
       "type": "Stop",
       "road_distances": {},
-      "name": "Prazhskaya",
+      "name": "Prazhskaya"
     }
   ],
   "stat_requests": [

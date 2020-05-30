@@ -11,8 +11,6 @@ namespace Json {
     return root;
   }
 
-  Node LoadNode(istream& input);
-
   Node LoadArray(istream& input) {
     vector<Node> result;
 
@@ -57,6 +55,17 @@ namespace Json {
     return Node(move(result));
   }
 
+
+
+  Node LoadBool(istream &input){
+      string line;
+      getline(input, line);
+      if(line[0]=='t'){
+          return Node(true);
+      }
+      return Node(false);
+  }
+
   Node LoadNode(istream& input) {
     char c;
     input >> c;
@@ -67,9 +76,13 @@ namespace Json {
       return LoadDict(input);
     } else if (c == '"') {
       return LoadString(input);
-    } else {
+    } else if (isdigit(c)) {
       input.putback(c);
       return LoadInt(input);
+    }
+    else {
+        input.putback(c);
+        return LoadBool(input);
     }
   }
 
