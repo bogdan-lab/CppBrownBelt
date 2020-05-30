@@ -81,8 +81,8 @@ double BusCatalog::ComputeBusRouteLen(const BusInfo* bus) const {
     return length;
 }
 
-size_t BusCatalog::ComputeBusRealDist(const BusInfo* bus) const {
-    size_t length = 0;
+int BusCatalog::ComputeBusRealDist(const BusInfo* bus) const {
+    int length = 0;
     for(auto it=bus->stop_names_.begin(); it!=prev(bus->stop_names_.end()); it++){
         auto start = it;
         auto end = next(it);
@@ -192,7 +192,7 @@ const BusInfo* BusCatalog::GetBus(string_view bus_id) const {
     return nullptr;
 }
 
-size_t BusCatalog::GetDistStructSize() const {
+int BusCatalog::GetDistStructSize() const {
     return all_distances_.size();
 }
 
@@ -216,6 +216,7 @@ void ReadInputData(BusCatalog& catalog, istream& in_stream){
 void ReadInputData(BusCatalog &catalog, const std::vector<Json::Node> &base_requests){
     using namespace Request;
     using namespace Json;
+    int idx = 0;
     for(const auto& el : base_requests){
         map<string, Node> request = el.AsMap();
         string_view input_name = request.at("type").AsString();
@@ -223,6 +224,7 @@ void ReadInputData(BusCatalog &catalog, const std::vector<Json::Node> &base_requ
         InputRequestHolder input = InputRequest::Create(input_type);
         input->ParseFrom(request);
         input->Process(catalog);
+        idx++;
     }
     catalog.UpdateDataBase();
 }
@@ -248,12 +250,16 @@ void ProcessRequests(const BusCatalog& catalog, istream& in_stream, ostream& out
 void ProcessRequests(const BusCatalog &catalog, const std::vector<Json::Node> &stat_requests, ostream &out_stream){
     using namespace Request;
     using namespace Json;
+    vector<Node> replies;
+    replies.reserve(stat_requests.size());
     for(const auto& el : stat_requests){
         map<string, Node> request = el.AsMap();
         string_view request_name = request.at("type").AsString();
         ReplyRequest::Type type = STR_TO_REQUEST_TYPE.at(request_name);
         ReplyRequestHolder res = ReplyRequest::Create(type);
         res->ParseFrom(catalog, request);
-        res->Reply(out_stream);
+        replies.push_back(res->Reply());
     }
+    PrintNodeVector(replies, out_stream);
+
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <istream>
+#include <iostream>
 #include <map>
 #include <string>
 #include <variant>
@@ -11,6 +11,7 @@ namespace Json {
   class Node : std::variant<std::vector<Node>,
                             std::map<std::string, Node>,
                             double,
+                            int,
                             bool,
                             std::string> {
   public:
@@ -22,8 +23,11 @@ namespace Json {
     const auto& AsMap() const {
       return std::get<std::map<std::string, Node>>(*this);
     }
-    int AsInt() const {
+    int DoubleAsInt() const {
       return static_cast<int>(this->AsDouble());
+    }
+    int AsInt() const {
+        return std::get<int>(*this);
     }
     double AsDouble() const {
         return std::get<double>(*this);
@@ -34,6 +38,27 @@ namespace Json {
     const auto& AsBool() const{
         return std::get<bool>(*this);
     }
+
+    bool HasMap() const {
+        return std::holds_alternative<std::map<std::string, Node>>(*this);
+    }
+
+    bool HasVector() const {
+        return std::holds_alternative<std::vector<Node>>(*this);
+    }
+
+    bool HasString() const {
+        return std::holds_alternative<std::string>(*this);
+    }
+
+    bool HasDouble() const {
+        return std::holds_alternative<double>(*this);
+    }
+
+    bool HasInt() const {
+        return std::holds_alternative<int>(*this);
+    }
+
   };
 
   class Document {
@@ -54,4 +79,10 @@ namespace Json {
   Node LoadBool(std::istream& input);
   Document Load(std::istream& input);
 
+  void PrintNode(const Node& node, std::ostream& output=std::cout);
+  void PrintNodeVector(const Node& node, std::ostream& output=std::cout);
+  void PrintNodeMap(const Node& node, std::ostream& output=std::cout);
+  void PrintNodeString(const Node& node, std::ostream& output=std::cout);
+  void PrintNodeInt(const Node& node, std::ostream& output=std::cout);
+  void PrintNodeDouble(const Node& node, std::ostream& output=std::cout);
 }

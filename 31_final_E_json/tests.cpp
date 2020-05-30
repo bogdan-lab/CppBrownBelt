@@ -81,7 +81,7 @@ void TestJsonRead(){
     ASSERT_EQUAL(req_0.at("name").AsString(), "Tolstopaltsevo");
     map<string, Node> req_0_roads = req_0.at("road_distances").AsMap();
     ASSERT_EQUAL(req_0_roads.size(), 1);
-    ASSERT_EQUAL(req_0_roads.at("Marushkino").AsInt(), 3900);
+    ASSERT_EQUAL(req_0_roads.at("Marushkino").DoubleAsInt(), 3900);
     ASSERT_EQUAL(req_0.at("longitude").AsDouble(), 37.20829);
     ASSERT_EQUAL(req_0.at("latitude").AsDouble(), 55.611087);
 
@@ -110,12 +110,12 @@ void TestJsonRead(){
     map<string, Node> req_0 = stat_requests[0].AsMap();
     ASSERT_EQUAL(req_0.at("type").AsString(), "Bus");
     ASSERT_EQUAL(req_0.at("name").AsString(), "256");
-    ASSERT_EQUAL(req_0.at("id").AsInt(), 0);
+    ASSERT_EQUAL(req_0.at("id").DoubleAsInt(), 0);
 
     map<string, Node> req_1 = stat_requests[1].AsMap();
     ASSERT_EQUAL(req_1.at("type").AsString(), "Stop");
     ASSERT_EQUAL(req_1.at("name").AsString(), "Biryulyovo Zapadnoye");
-    ASSERT_EQUAL(req_1.at("id").AsInt(), 2147483647);
+    ASSERT_EQUAL(req_1.at("id").DoubleAsInt(), 2147483647);
 
     }
 }

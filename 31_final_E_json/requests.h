@@ -88,6 +88,7 @@ struct ReplyRequest{
     virtual void ParseFrom(const BusCatalog& catalog, std::string_view request) = 0;
     virtual void ParseFrom(const BusCatalog& catalog, const std::map<std::string, Json::Node>& request) = 0;
     virtual void Reply(std::ostream& out_stream) const = 0;
+    virtual Json::Node Reply() const = 0;
 };
 
 
@@ -101,19 +102,20 @@ struct BusReply : ReplyRequest{
     std::string_view name_ = {};
     int id_ = 0;
     bool found_ = false;
-    std::optional<size_t> num_stops_;
-    std::optional<size_t> unique_stops_;
+    std::optional<int> num_stops_;
+    std::optional<int> unique_stops_;
     std::optional<double> route_len_;
-    std::optional<size_t> real_distance_;
+    std::optional<int> real_distance_;
 
     BusReply();
-    std::optional<size_t> GetAllStopsNum(const BusInfo* bus);
-    std::optional<size_t> GetUniqueStopsNum(const BusInfo* bus);
+    std::optional<int> GetAllStopsNum(const BusInfo* bus);
+    std::optional<int> GetUniqueStopsNum(const BusInfo* bus);
     std::optional<double> GetRouteLength(const BusInfo* bus);
-    std::optional<size_t> GetRealDistance(const BusInfo* bus);
+    std::optional<int> GetRealDistance(const BusInfo* bus);
     void ParseFrom(const BusCatalog& catalog, std::string_view request) override;
     void ParseFrom(const BusCatalog& catalog, const std::map<std::string, Json::Node>& request) override;
     void Reply(std::ostream& out_stream) const override;
+    Json::Node Reply() const override;
 };
 
 struct StopReply : ReplyRequest{
@@ -127,6 +129,7 @@ struct StopReply : ReplyRequest{
     void ParseFrom(const BusCatalog& catalog, std::string_view request) override;
     void ParseFrom(const BusCatalog& catalog, const std::map<std::string, Json::Node>& request) override;
     void Reply(std::ostream& out_stream) const override;
+    Json::Node Reply() const override;
 };
 
 

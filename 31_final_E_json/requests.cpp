@@ -43,7 +43,7 @@ void InputStop::ParseFrom(const map<string, Node>& request){
     distances_.reserve(given_distances.size());
     for(const auto& el : given_distances){
         string_view station = el.first;
-        size_t dist = el.second.AsInt();
+        size_t dist = el.second.DoubleAsInt();
         distances_.push_back(make_pair(station, dist));
     }
 
@@ -114,7 +114,7 @@ InputRequestHolder InputRequest::Create(Type type){
 
     BusReply::BusReply(): ReplyRequest::ReplyRequest(ReplyRequest::Type::BUS) {}
 
-    optional<size_t> BusReply::GetAllStopsNum(const BusInfo* bus){
+    optional<int> BusReply::GetAllStopsNum(const BusInfo* bus){
         if(bus){
             if(bus->type_==BusInfo::Type::STRAIGHT){return 2*bus->stop_names_.size()-1;}
             else {return bus->stop_names_.size()+1;}
@@ -122,7 +122,7 @@ InputRequestHolder InputRequest::Create(Type type){
         return nullopt;
     }
 
-    optional<size_t> BusReply::GetUniqueStopsNum(const BusInfo* bus){
+    optional<int> BusReply::GetUniqueStopsNum(const BusInfo* bus){
         if(bus){
             return bus->unique_stops_.size();
         }
@@ -136,7 +136,7 @@ InputRequestHolder InputRequest::Create(Type type){
         return nullopt;
     }
 
-    optional<size_t> BusReply::GetRealDistance(const BusInfo* bus){
+    optional<int> BusReply::GetRealDistance(const BusInfo* bus){
         if (bus){
             return bus->real_dist_;
         }
@@ -155,7 +155,7 @@ InputRequestHolder InputRequest::Create(Type type){
 
     void BusReply::ParseFrom(const BusCatalog &catalog, const std::map<string, Node> &request){
         name_ = request.at("name").AsString();
-        id_ = request.at("id").AsInt();
+        id_ = request.at("id").DoubleAsInt();
         const BusInfo* bus = catalog.GetBus(name_);
         found_ = bus;
         num_stops_ = GetAllStopsNum(bus);
@@ -174,6 +174,21 @@ InputRequestHolder InputRequest::Create(Type type){
         }
     }
 
+    Node BusReply::Reply() const{
+        map<string, Node> reply;
+        reply["request_id"] = Node(id_);
+        if(found_){
+            reply["route length"] = Node(real_distance_.value());
+            reply["curvature"] = Node(real_distance_.value()/route_len_.value());
+            reply["stop_count"] = Node(num_stops_.value());
+            reply["unique_stop_count"] = Node(unique_stops_.value());
+        }
+        else{
+            reply["error_message"] = Node("not found");
+        }
+        return Node(reply);
+    }
+
    StopReply::StopReply(): ReplyRequest::ReplyRequest(ReplyRequest::Type::STOP) {}
 
     void StopReply::ParseFrom(const BusCatalog& catalog, string_view request) {
@@ -185,7 +200,7 @@ InputRequestHolder InputRequest::Create(Type type){
 
     void StopReply::ParseFrom(const BusCatalog &catalog, const std::map<string, Node> &request){
         stop_name_ = request.at("name").AsString();
-        id_ = request.at("id").AsInt();
+        id_ = request.at("id").DoubleAsInt();
         const auto* stop = catalog.GetStop(stop_name_);
         found_ = stop;
         buses_ = catalog.GetBusesForStop(stop_name_);
@@ -209,6 +224,24 @@ InputRequestHolder InputRequest::Create(Type type){
         }
     }
 
+    Node StopReply::Reply() const{
+        map<string, Node> reply;
+        reply["request_id"] = Node(id_);
+        if (found_){
+            vector<Node> buses_to_stop;
+            if(buses_){
+                buses_to_stop.reserve(buses_.value().size());
+                for(const auto& el : buses_.value()){
+                    buses_to_stop.push_back(Node(string(el)));
+                }
+            }
+            reply["buses"] = Node(buses_to_stop);
+        }
+        else {
+            reply["error_message"] = Node("not found");
+        }
+        return Node(reply);
+    }
 
     ReplyRequestHolder ReplyRequest::Create(ReplyRequest::Type type){
     switch (type) {

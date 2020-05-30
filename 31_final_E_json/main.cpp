@@ -28,11 +28,18 @@ using namespace std;
 
 
 int main(){
-    RunTests();
-//    BusCatalog catalog;
-//    ReadInputData(catalog);
+//    RunTests();
+
+    ifstream inFile;
+    inFile.open("./test");
+    Json::Document doc = Json::Load(inFile);
+    inFile.close();
+    BusCatalog catalog;
+
+    map<string, Json::Node> all_requests = doc.GetRoot().AsMap();
+    ReadInputData(catalog, all_requests.at("base_requests").AsArray());
 //    cout << setprecision(6);
-//    ProcessRequests(catalog);
+//    ProcessRequests(catalog, all_requests.at("stat_requests").AsArray());
 
     return 0;
 }
