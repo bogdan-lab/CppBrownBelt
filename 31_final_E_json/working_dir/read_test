@@ -40,5 +40,17 @@
       ],
       "is_roundtrip": false
     }
+],
+"stat_requests": [
+    {
+      "type": "Bus",
+      "name": "256",
+      "id": 0
+    },
+    {
+      "type": "Stop",
+      "name": "Biryulyovo Zapadnoye",
+      "id": 2147483647
+    }
 ]
 }
